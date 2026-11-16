@@ -1,0 +1,23 @@
+# Put this file at: .github/workflows/keepalive.yml
+# Why: Supabase free projects pause after ~7 days with no database activity.
+# This pings the database every 3 days for free using GitHub Actions.
+# Needs 2 repo secrets: SUPABASE_URL and SUPABASE_ANON_KEY
+
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: "30 3 */3 * *"   # every 3 days, 09:00 IST
+  workflow_dispatch:          # lets you run it by hand from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping database
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/items?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}")
+          echo "Supabase answered HTTP $code"
+          test "$code" = "200"

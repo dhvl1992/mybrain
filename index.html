@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MyBrain</title>
+<meta name="theme-color" content="#111827">
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --txt:#e2e8f0; --mut:#94a3b8; --acc:#38bdf8; --ok:#22c55e; --bad:#f87171; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 system-ui,sans-serif; background:var(--bg); color:var(--txt); padding-bottom:70px; }
+  header { position:sticky; top:0; background:var(--bg); padding:12px 14px; border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; z-index:5; }
+  header h1 { font-size:18px; margin:0; flex:1; }
+  main { padding:14px; max-width:720px; margin:auto; }
+  textarea, input, select { width:100%; background:var(--card); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; }
+  textarea { min-height:140px; resize:vertical; }
+  button { background:var(--acc); color:#0f172a; border:0; border-radius:10px; padding:10px 14px; font:inherit; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--txt); border:1px solid var(--line); }
+  button.small { padding:4px 10px; font-size:13px; }
+  .row { display:flex; gap:8px; margin:10px 0; flex-wrap:wrap; }
+  .row > * { flex:1; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:8px 0; }
+  .card.done .title { text-decoration:line-through; color:var(--mut); }
+  .title { font-weight:600; }
+  .meta { color:var(--mut); font-size:12px; margin-top:4px; }
+  .tag { display:inline-block; background:#0b3b52; color:var(--acc); border-radius:6px; padding:0 6px; margin-right:4px; font-size:12px; }
+  .p1 { border-left:4px solid var(--bad); } .p2 { border-left:4px solid var(--acc); } .p3 { border-left:4px solid var(--line); }
+  nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid var(--line); }
+  nav button { flex:1; background:transparent; color:var(--mut); border-radius:0; padding:14px 0; }
+  nav button.on { color:var(--acc); }
+  .hidden { display:none !important; }
+  #status { position:fixed; bottom:62px; left:50%; transform:translateX(-50%); background:#000c; padding:6px 12px; border-radius:8px; font-size:13px; }
+  .body { white-space:pre-wrap; margin-top:4px; font-size:14px; }
+  label { font-size:13px; color:var(--mut); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧠 MyBrain</h1>
+  <button id="btnSettings" class="ghost small">⚙️</button>
+</header>
+
+<main>
+  <!-- LOGIN -->
+  <section id="viewLogin" class="hidden">
+    <p>Sign in to your private space.</p>
+    <input id="email" type="email" placeholder="Email" autocomplete="email">
+    <div style="height:8px"></div>
+    <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+    <div class="row">
+      <button id="btnLogin">Log in</button>
+      <button id="btnSignup" class="ghost">Sign up</button>
+    </div>
+  </section>
+
+  <!-- CAPTURE -->
+  <section id="viewCapture" class="hidden">
+    <textarea id="rough" placeholder="Dump anything here, any language, any mess.&#10;e.g. call electrician tmrw, idea: SSL fairness loss using group-balanced negatives, buy milk, GTU marks upload by friday"></textarea>
+    <div class="row">
+      <button id="btnOrganize">✨ Organize</button>
+      <button id="btnQuick" class="ghost">Save as note</button>
+    </div>
+    <div id="preview"></div>
+    <div class="row hidden" id="previewActions">
+      <button id="btnSavePreview">Save selected</button>
+      <button id="btnCancelPreview" class="ghost">Cancel</button>
+    </div>
+  </section>
+
+  <!-- LIST (todos or notes) -->
+  <section id="viewList" class="hidden">
+    <div class="row">
+      <input id="search" placeholder="Search…">
+      <select id="filter" style="flex:0 0 120px">
+        <option value="open">Open</option>
+        <option value="all">All</option>
+        <option value="done">Done</option>
+      </select>
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="viewSettings" class="hidden">
+    <label>Gemini API key (stays only on this device)</label>
+    <input id="geminiKey" type="password" placeholder="Paste key from aistudio.google.com">
+    <div style="height:8px"></div>
+    <label>Gemini model</label>
+    <input id="geminiModel" placeholder="gemini-3.8-flash">
+    <div class="row">
+      <button id="btnSaveSettings">Save</button>
+      <button id="btnExport" class="ghost">Export backup (JSON)</button>
+    </div>
+    <div class="row">
+      <button id="btnLogout" class="ghost">Log out</button>
+    </div>
+    <p class="meta">Without a key, Organize uses the simple offline parser.</p>
+  </section>
+</main>
+
+<nav id="nav" class="hidden">
+  <button data-view="capture" class="on">➕ Capture</button>
+  <button data-view="todo">✅ To-do</button>
+  <button data-view="note">📝 Notes</button>
+</nav>
+
+<div id="status" class="hidden"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ============ 1. CONFIG — fill these two from Supabase → Project Settings → API ============
+// The anon key is meant to be public. Row Level Security keeps your data private.
+const SUPABASE_URL = "https://yncbwqhytcxkqrlonkkk.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_Sf-aeTSLVtF1aR2-KUSWMA_ecVQidxd";
+const DEBUG = true; // set false to silence console logs
+
+// ============ 2. STATE ============
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const state = { user: null, items: [], view: "capture", preview: [] };
+const $ = (id) => document.getElementById(id);
+const log = (...a) => DEBUG && console.log("[MyBrain]", ...a);
+
+// ============ 3. BOOT ============
+boot();
+
+async function boot() {
+  $("geminiKey").value = localStorage.getItem("geminiKey") || "";
+  $("geminiModel").value = localStorage.getItem("geminiModel") || "gemini-3.8-flash";
+  wireEvents();
+  const { data } = await db.auth.getSession();
+  state.user = data.session?.user || null;
+  log("session user", state.user?.email);
+  if (state.user) { await loadItems(); show("capture"); } else { show("login"); }
+}
+
+// ============ 4. EVENTS ============
+function wireEvents() {
+  $("btnLogin").onclick = () => auth("login");
+  $("btnSignup").onclick = () => auth("signup");
+  $("btnLogout").onclick = async () => { await db.auth.signOut(); state.user = null; show("login"); };
+  $("btnSettings").onclick = () => show(state.user ? "settings" : "login");
+  $("btnSaveSettings").onclick = () => {
+    localStorage.setItem("geminiKey", $("geminiKey").value.trim());
+    localStorage.setItem("geminiModel", $("geminiModel").value.trim() || "gemini-3.8-flash");
+    toast("Saved");
+  };
+  $("btnExport").onclick = exportBackup;
+  $("btnOrganize").onclick = organize;
+  $("btnQuick").onclick = quickNote;
+  $("btnSavePreview").onclick = savePreview;
+  $("btnCancelPreview").onclick = clearPreview;
+  $("search").oninput = renderList;
+  $("filter").onchange = renderList;
+  document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
+}
+
+// ============ 5. VIEWS ============
+function show(view) {
+  state.view = view;
+  $("viewLogin").classList.toggle("hidden", view !== "login");
+  $("viewCapture").classList.toggle("hidden", view !== "capture");
+  $("viewList").classList.toggle("hidden", view !== "todo" && view !== "note");
+  $("viewSettings").classList.toggle("hidden", view !== "settings");
+  $("nav").classList.toggle("hidden", view === "login");
+  $("filter").classList.toggle("hidden", view === "note");
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.view === view));
+  if (view === "todo" || view === "note") renderList();
+}
+
+function toast(msg, ms = 2000) {
+  const s = $("status");
+  s.textContent = msg; s.classList.remove("hidden");
+  clearTimeout(toast.t); toast.t = setTimeout(() => s.classList.add("hidden"), ms);
+}
+
+// ============ 6. AUTH ============
+async function auth(mode) {
+  const email = $("email").value.trim(), password = $("password").value;
+  if (!email || password.length < 6) return toast("Email + password (6+ chars)");
+  const fn = mode === "signup" ? db.auth.signUp : db.auth.signInWithPassword;
+  const { data, error } = await fn.call(db.auth, { email, password });
+  log("auth", mode, data, error);
+  if (error) return toast(error.message, 4000);
+  if (!data.session) return toast("Check your email to confirm, then log in", 5000);
+  state.user = data.user;
+  await loadItems();
+  show("capture");
+}
+
+// ============ 7. DATA (Supabase) ============
+async function loadItems() {
+  const { data, error } = await db.from("items").select("*").order("created_at", { ascending: false });
+  log("loadItems", data?.length, error);
+  if (error) return toast("Load failed: " + error.message, 4000);
+  state.items = data;
+}
+
+async function insertItems(rows) {
+  const { data, error } = await db.from("items").insert(rows).select();
+  log("insertItems", rows, data, error);
+  if (error) { toast("Save failed: " + error.message, 4000); return false; }
+  state.items = [...data, ...state.items];
+  return true;
+}
+
+async function updateItem(id, patch) {
+  patch.updated_at = new Date().toISOString();
+  const { error } = await db.from("items").update(patch).eq("id", id);
+  log("updateItem", id, patch, error);
+  if (error) return toast("Update failed: " + error.message, 4000);
+  Object.assign(state.items.find((i) => i.id === id), patch);
+  renderList();
+}
+
+async function deleteItem(id) {
+  if (!confirmDelete(id)) return;
+  const { error } = await db.from("items").delete().eq("id", id);
+  log("deleteItem", id, error);
+  if (error) return toast("Delete failed: " + error.message, 4000);
+  state.items = state.items.filter((i) => i.id !== id);
+  renderList();
+}
+
+// Two taps to delete (no browser popup)
+function confirmDelete(id) {
+  if (confirmDelete.armed === id) { confirmDelete.armed = null; return true; }
+  confirmDelete.armed = id; toast("Tap 🗑 again to delete"); return false;
+}
+
+// ============ 8. ORGANIZE (AI → fallback) ============
+async function organize() {
+  const text = $("rough").value.trim();
+  if (!text) return toast("Write something first");
+  const key = localStorage.getItem("geminiKey");
+  let items = null;
+  if (key) {
+    toast("Thinking…", 10000);
+    try { items = await aiOrganize(text, key); }
+    catch (e) { log("AI failed, using offline parser", e); toast("AI failed → offline parser", 3000); }
+  }
+  if (!items) items = offlineOrganize(text);
+  state.preview = items.map((i) => ({ ...i, keep: true }));
+  renderPreview();
+}
+
+async function aiOrganize(text, key) {
+  const model = localStorage.getItem("geminiModel") || "gemini-3.8-flash";
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = `Today is ${today}. Split the rough text below into separate items.
+Each item is either a "todo" (an action to do) or a "note" (info, idea, thought).
+Rules:
+- title: short, clear, in English, max 80 chars. Fix spelling. Hinglish/Gujarati input is fine.
+- body: extra details only, else "".
+- tags: 1-3 lowercase single-word tags (e.g. work, home, research, teaching, money).
+- due: YYYY-MM-DD only if a date/day is mentioned ("tmrw", "friday"), else null.
+- priority: 1 high, 2 normal, 3 low.
+Return JSON only: {"items":[{"kind","title","body","tags","due","priority"}]}
+
+TEXT:
+${text}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+    }),
+  });
+  const json = await res.json();
+  log("gemini raw", json);
+  if (!res.ok) throw new Error(json.error?.message || res.status);
+  const out = JSON.parse(json.candidates[0].content.parts[0].text);
+  return out.items.map(cleanItem);
+}
+
+// Offline: one item per line/comma-chunk, simple keyword rules
+function offlineOrganize(text) {
+  const verbs = /^(call|buy|send|pay|email|mail|book|fix|submit|upload|finish|check|meet|ask|prepare|make|write|read|go|todo|remind|complete)\b/i;
+  const chunks = text.split(/\n|;|,(?=\s*[a-z])/i).map((s) => s.replace(/^[-*•\d.)\s]+/, "").trim()).filter(Boolean);
+  return chunks.map((c) => {
+    const isTodo = verbs.test(c) || /\b(todo|tmrw|tomorrow|today|by \w+day)\b/i.test(c);
+    const isIdea = /^(idea|note)\s*:/i.test(c);
+    return cleanItem({
+      kind: isTodo && !isIdea ? "todo" : "note",
+      title: c.replace(/^(idea|note|todo)\s*:\s*/i, ""),
+      due: guessDate(c),
+      tags: [],
+      priority: /\b(urgent|asap|important)\b/i.test(c) ? 1 : 2,
+    });
+  });
+}
+
+function guessDate(s) {
+  const d = new Date();
+  if (/\b(today|aaj)\b/i.test(s)) return iso(d);
+  if (/\b(tmrw|tomorrow|kal)\b/i.test(s)) { d.setDate(d.getDate() + 1); return iso(d); }
+  const days = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+  const m = s.toLowerCase().match(/\b(sun|mon|tue|wed|thu|fri|sat)[a-z]*\b/);
+  if (m) { const t = days.findIndex((x) => x.startsWith(m[1])); d.setDate(d.getDate() + ((t - d.getDay() + 7) % 7 || 7)); return iso(d); }
+  return null;
+}
+const iso = (d) => d.toISOString().slice(0, 10);
+
+function cleanItem(i) {
+  return {
+    kind: i.kind === "todo" ? "todo" : "note",
+    title: String(i.title || "").slice(0, 200) || "(untitled)",
+    body: String(i.body || ""),
+    tags: Array.isArray(i.tags) ? i.tags.slice(0, 5).map(String) : [],
+    due: /^\d{4}-\d{2}-\d{2}$/.test(i.due) ? i.due : null,
+    priority: [1, 2, 3].includes(Number(i.priority)) ? Number(i.priority) : 2,
+  };
+}
+
+// ============ 9. PREVIEW ============
+function renderPreview() {
+  $("preview").innerHTML = state.preview.map((p, n) => `
+    <div class="card p${p.priority}">
+      <label><input type="checkbox" data-n="${n}" ${p.keep ? "checked" : ""} style="width:auto"> ${p.kind === "todo" ? "✅" : "📝"}
+        <span class="title">${esc(p.title)}</span></label>
+      ${p.body ? `<div class="body">${esc(p.body)}</div>` : ""}
+      <div class="meta">${p.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}${p.due ? "📅 " + p.due : ""}
+        <button class="ghost small" data-flip="${n}">→ ${p.kind === "todo" ? "note" : "todo"}</button></div>
+    </div>`).join("");
+  $("previewActions").classList.toggle("hidden", !state.preview.length);
+  $("preview").querySelectorAll("[data-n]").forEach((c) => (c.onchange = () => (state.preview[c.dataset.n].keep = c.checked)));
+  $("preview").querySelectorAll("[data-flip]").forEach((b) => (b.onclick = () => {
+    const p = state.preview[b.dataset.flip]; p.kind = p.kind === "todo" ? "note" : "todo"; renderPreview();
+  }));
+}
+
+async function savePreview() {
+  const rows = state.preview.filter((p) => p.keep).map(({ keep, ...r }) => r);
+  if (!rows.length) return toast("Nothing selected");
+  if (await insertItems(rows)) { toast(`Saved ${rows.length}`); $("rough").value = ""; clearPreview(); }
+}
+
+function clearPreview() { state.preview = []; renderPreview(); }
+
+async function quickNote() {
+  const text = $("rough").value.trim();
+  if (!text) return toast("Write something first");
+  const [first, ...rest] = text.split("\n");
+  if (await insertItems([cleanItem({ kind: "note", title: first, body: rest.join("\n") })])) { $("rough").value = ""; toast("Note saved"); }
+}
+
+// ============ 10. LIST ============
+function renderList() {
+  const kind = state.view, q = $("search").value.toLowerCase(), f = $("filter").value;
+  let rows = state.items.filter((i) => i.kind === kind);
+  if (kind === "todo" && f === "open") rows = rows.filter((i) => !i.done);
+  if (kind === "todo" && f === "done") rows = rows.filter((i) => i.done);
+  if (q) rows = rows.filter((i) => (i.title + " " + i.body + " " + (i.tags || []).join(" ")).toLowerCase().includes(q));
+  if (kind === "todo") rows.sort((a, b) => (a.done - b.done) || (a.priority - b.priority) || String(a.due || "9").localeCompare(String(b.due || "9")));
+  $("list").innerHTML = rows.length ? rows.map(cardHtml).join("") : `<p class="meta">Nothing here yet.</p>`;
+  $("list").querySelectorAll("[data-done]").forEach((c) => (c.onchange = () => updateItem(c.dataset.done, { done: c.checked })));
+  $("list").querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteItem(b.dataset.del)));
+}
+
+function cardHtml(i) {
+  const overdue = i.due && !i.done && i.due < iso(new Date());
+  return `<div class="card p${i.priority} ${i.done ? "done" : ""}">
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      ${i.kind === "todo" ? `<input type="checkbox" data-done="${i.id}" ${i.done ? "checked" : ""} style="width:auto;margin-top:4px">` : ""}
+      <div style="flex:1"><div class="title">${esc(i.title)}</div>
+        ${i.body ? `<div class="body">${esc(i.body)}</div>` : ""}
+        <div class="meta">${(i.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}
+          ${i.due ? `<span style="color:${overdue ? "var(--bad)" : "inherit"}">📅 ${i.due}</span>` : ""}
+          · ${new Date(i.created_at).toLocaleDateString()}</div></div>
+      <button class="ghost small" data-del="${i.id}">🗑</button>
+    </div></div>`;
+}
+
+// ============ 11. BACKUP ============
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(state.items, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `mybrain-backup-${iso(new Date())}.json`;
+  a.click();
+}
+
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+</script>
+</body>
+</html>
