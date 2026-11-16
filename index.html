@@ -87,7 +87,7 @@
     <input id="geminiKey" type="password" placeholder="Paste key from aistudio.google.com">
     <div style="height:8px"></div>
     <label>Gemini model</label>
-    <input id="geminiModel" placeholder="gemini-3.8-flash">
+    <input id="geminiModel" placeholder="gemini-3.5-flash-lite">
     <div class="row">
       <button id="btnSaveSettings">Save</button>
       <button id="btnExport" class="ghost">Export backup (JSON)</button>
@@ -128,7 +128,7 @@ boot();
 
 async function boot() {
   $("geminiKey").value = localStorage.getItem("geminiKey") || "";
-  $("geminiModel").value = localStorage.getItem("geminiModel") || "gemini-3.8-flash";
+  $("geminiModel").value = localStorage.getItem("geminiModel") || "gemini-3.5-flash-lite";
   wireEvents();
   const { data } = await db.auth.getSession();
   state.user = data.session?.user || null;
@@ -144,7 +144,7 @@ function wireEvents() {
   $("btnSettings").onclick = () => show(state.user ? "settings" : "login");
   $("btnSaveSettings").onclick = () => {
     localStorage.setItem("geminiKey", $("geminiKey").value.trim());
-    localStorage.setItem("geminiModel", $("geminiModel").value.trim() || "gemini-3.8-flash");
+    localStorage.setItem("geminiModel", $("geminiModel").value.trim() || "gemini-3.5-flash-lite");
     toast("Saved");
   };
   $("btnExport").onclick = exportBackup;
@@ -270,11 +270,12 @@ async function testAI() {
     if (!names.length) throw new Error("Key works, but no Flash text model found.");
     let model = $("geminiModel").value.trim();
     if (!names.includes(model)) {
-      model = names.find((n) => /flash-lite/.test(n)) || names[0];
+      model = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"].find((n) => names.includes(n)) || names.find((n) => /flash-lite/.test(n)) || names[0];
       $("geminiModel").value = model;
     }
     localStorage.setItem("geminiModel", model);
     out.textContent = "Key OK.\nUsing model: " + model + "\n\nAvailable: " + names.join(", ");
+    out.textContent += "\n\nTest call running…";
     await aiOrganize("test: buy milk", key); // real call to confirm quota
     out.textContent += "\n\n✅ Test call worked.";
   } catch (e) {
@@ -283,7 +284,7 @@ async function testAI() {
 }
 
 async function aiOrganize(text, key) {
-  const model = localStorage.getItem("geminiModel") || "gemini-3.8-flash";
+  const model = localStorage.getItem("geminiModel") || "gemini-3.5-flash-lite";
   const today = iso(new Date());
   const prompt = `Today is ${today}. Split the rough text below into separate items.
 Each item is either a "todo" (an action to do) or a "note" (info, idea, thought).
@@ -299,6 +300,7 @@ TEXT:
 ${text}`;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const res = await fetch(url, {
+    signal: AbortSignal.timeout(25000), // never hang silently
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
