@@ -93,8 +93,10 @@
       <button id="btnExport" class="ghost">Export backup (JSON)</button>
     </div>
     <div class="row">
+      <button id="btnTestAI" class="ghost">🔌 Test AI</button>
       <button id="btnLogout" class="ghost">Log out</button>
     </div>
+    <div id="aiTestOut" class="card meta hidden" style="white-space:pre-wrap"></div>
     <p class="meta">Without a key, Organize uses the simple offline parser.</p>
   </section>
 </main>
@@ -146,6 +148,7 @@ function wireEvents() {
     toast("Saved");
   };
   $("btnExport").onclick = exportBackup;
+  $("btnTestAI").onclick = testAI;
   $("btnOrganize").onclick = organize;
   $("btnQuick").onclick = quickNote;
   $("btnSavePreview").onclick = savePreview;
@@ -233,15 +236,50 @@ async function organize() {
   const text = $("rough").value.trim();
   if (!text) return toast("Write something first");
   const key = localStorage.getItem("geminiKey");
-  let items = null;
-  if (key) {
-    toast("Thinking…", 10000);
-    try { items = await aiOrganize(text, key); }
-    catch (e) { log("AI failed, using offline parser", e); toast("AI failed → offline parser", 3000); }
+  let items = null, source = "";
+  if (!key) source = "⚠️ No Gemini key saved → offline parser. Add key in ⚙️.";
+  else {
+    toast("Thinking…", 15000);
+    try { items = await aiOrganize(text, key); source = "✨ Organized by " + (localStorage.getItem("geminiModel") || "gemini"); }
+    catch (e) { log("AI failed", e); source = "⚠️ AI failed: " + e.message + "\n→ used offline parser. Open ⚙️ → Test AI."; }
+    toast("Done", 800);
   }
   if (!items) items = offlineOrganize(text);
   state.preview = items.map((i) => ({ ...i, keep: true }));
+  state.source = source;
   renderPreview();
+}
+
+// Settings → Test AI: lists models this key can use, fixes the model name if needed
+async function testAI() {
+  const out = $("aiTestOut");
+  out.classList.remove("hidden");
+  const key = $("geminiKey").value.trim();
+  if (!key) return (out.textContent = "Paste your key first.");
+  localStorage.setItem("geminiKey", key);
+  out.textContent = "Checking key…";
+  try {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
+    const json = await res.json();
+    log("listModels", json);
+    if (!res.ok) throw new Error(json.error?.message || "HTTP " + res.status);
+    const names = (json.models || [])
+      .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
+      .map((m) => m.name.replace("models/", ""))
+      .filter((n) => /flash/.test(n) && !/image|tts|audio|live|exp|preview/.test(n));
+    if (!names.length) throw new Error("Key works, but no Flash text model found.");
+    let model = $("geminiModel").value.trim();
+    if (!names.includes(model)) {
+      model = names.find((n) => /flash-lite/.test(n)) || names[0];
+      $("geminiModel").value = model;
+    }
+    localStorage.setItem("geminiModel", model);
+    out.textContent = "Key OK.\nUsing model: " + model + "\n\nAvailable: " + names.join(", ");
+    await aiOrganize("test: buy milk", key); // real call to confirm quota
+    out.textContent += "\n\n✅ Test call worked.";
+  } catch (e) {
+    out.textContent = "❌ " + e.message;
+  }
 }
 
 async function aiOrganize(text, key) {
@@ -271,7 +309,11 @@ ${text}`;
   const json = await res.json();
   log("gemini raw", json);
   if (!res.ok) throw new Error(json.error?.message || res.status);
-  const out = JSON.parse(json.candidates[0].content.parts[0].text);
+  const parts = json.candidates?.[0]?.content?.parts || [];
+  const textPart = parts.filter((p) => p.text && !p.thought).pop();
+  if (!textPart) throw new Error("Empty AI reply (" + (json.candidates?.[0]?.finishReason || "no candidates") + ")");
+  const out = JSON.parse(textPart.text.replace(/^```(json)?|```$/g, "").trim());
+  if (!Array.isArray(out.items)) throw new Error("AI reply missing items list");
   return out.items.map(cleanItem);
 }
 
@@ -316,7 +358,8 @@ function cleanItem(i) {
 
 // ============ 9. PREVIEW ============
 function renderPreview() {
-  $("preview").innerHTML = state.preview.map((p, n) => `
+  const head = state.preview.length && state.source ? `<div class="meta" style="white-space:pre-wrap;margin:6px 0">${esc(state.source)}</div>` : "";
+  $("preview").innerHTML = head + state.preview.map((p, n) => `
     <div class="card p${p.priority}">
       <label><input type="checkbox" data-n="${n}" ${p.keep ? "checked" : ""} style="width:auto"> ${p.kind === "todo" ? "✅" : "📝"}
         <span class="title">${esc(p.title)}</span></label>
