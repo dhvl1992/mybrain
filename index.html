@@ -284,7 +284,7 @@ async function testAI() {
 
 async function aiOrganize(text, key) {
   const model = localStorage.getItem("geminiModel") || "gemini-3.8-flash";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = iso(new Date());
   const prompt = `Today is ${today}. Split the rough text below into separate items.
 Each item is either a "todo" (an action to do) or a "note" (info, idea, thought).
 Rules:
@@ -343,7 +343,7 @@ function guessDate(s) {
   if (m) { const t = days.findIndex((x) => x.startsWith(m[1])); d.setDate(d.getDate() + ((t - d.getDay() + 7) % 7 || 7)); return iso(d); }
   return null;
 }
-const iso = (d) => d.toISOString().slice(0, 10);
+const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); // local date, not UTC
 
 function cleanItem(i) {
   return {
