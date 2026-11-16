@@ -4,131 +4,265 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MyBrain</title>
-<meta name="theme-color" content="#111827">
+<meta name="description" content="Personal tasks and notes">
+<meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
-  :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --txt:#e2e8f0; --mut:#94a3b8; --acc:#38bdf8; --ok:#22c55e; --bad:#f87171; }
-  * { box-sizing:border-box; }
-  body { margin:0; font:15px/1.45 system-ui,sans-serif; background:var(--bg); color:var(--txt); padding-bottom:70px; }
-  header { position:sticky; top:0; background:var(--bg); padding:12px 14px; border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; z-index:5; }
-  header h1 { font-size:18px; margin:0; flex:1; }
-  main { padding:14px; max-width:720px; margin:auto; }
-  textarea, input, select { width:100%; background:var(--card); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; font:inherit; }
-  textarea { min-height:140px; resize:vertical; }
-  button { background:var(--acc); color:#0f172a; border:0; border-radius:10px; padding:10px 14px; font:inherit; font-weight:600; cursor:pointer; }
-  button.ghost { background:transparent; color:var(--txt); border:1px solid var(--line); }
-  button.small { padding:4px 10px; font-size:13px; }
-  .row { display:flex; gap:8px; margin:10px 0; flex-wrap:wrap; }
-  .row > * { flex:1; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:8px 0; }
-  .card.done .title { text-decoration:line-through; color:var(--mut); }
-  .title { font-weight:600; }
-  .meta { color:var(--mut); font-size:12px; margin-top:4px; }
-  .tag { display:inline-block; background:#0b3b52; color:var(--acc); border-radius:6px; padding:0 6px; margin-right:4px; font-size:12px; }
-  .p1 { border-left:4px solid var(--bad); } .p2 { border-left:4px solid var(--acc); } .p3 { border-left:4px solid var(--line); }
-  nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card); border-top:1px solid var(--line); }
-  nav button { flex:1; background:transparent; color:var(--mut); border-radius:0; padding:14px 0; }
-  nav button.on { color:var(--acc); }
-  .hidden { display:none !important; }
-  #status { position:fixed; bottom:62px; left:50%; transform:translateX(-50%); background:#000c; padding:6px 12px; border-radius:8px; font-size:13px; }
-  .body { white-space:pre-wrap; margin-top:4px; font-size:14px; }
-  label { font-size:13px; color:var(--mut); }
+  /* ---------- Design tokens ---------- */
+  :root {
+    --bg: #f7f7f5; --surface: #ffffff; --surface-2: #f1f1ee;
+    --text: #1c1c1a; --muted: #6f6f6a; --faint: #a3a39d;
+    --border: #e7e7e2; --accent: #1f7a5a; --accent-soft: #e6f2ec;
+    --danger: #c43d3d; --danger-soft: #fbeaea; --warn: #b7791f;
+    --radius: 12px; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 1px 1px rgba(0,0,0,.02);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121212; --surface: #1c1c1c; --surface-2: #262626;
+      --text: #ececea; --muted: #9a9a95; --faint: #6b6b66;
+      --border: #2c2c2c; --accent: #4cc496; --accent-soft: #1b2e26;
+      --danger: #ef6b6b; --danger-soft: #3a1f1f; --warn: #e0a84a;
+      --shadow: none; color-scheme: dark;
+    }
+  }
+
+  /* ---------- Base ---------- */
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+         padding-bottom: calc(72px + env(safe-area-inset-bottom)); -webkit-font-smoothing: antialiased; }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  svg.i { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .hidden { display: none !important; }
+
+  /* ---------- Layout ---------- */
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+  header { padding: calc(18px + env(safe-area-inset-top)) 0 8px; }
+  .head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 28px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .icon-btn { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+              display: grid; place-items: center; cursor: pointer; color: var(--muted); }
+  .icon-btn:active { background: var(--surface-2); }
+  section { padding-top: 8px; }
+
+  /* ---------- Controls ---------- */
+  .field { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+           padding: 12px 14px; outline: none; transition: border-color .15s; }
+  .field:focus { border-color: var(--accent); }
+  textarea.field { min-height: 150px; resize: vertical; line-height: 1.55; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 18px;
+         border-radius: 10px; border: 1px solid transparent; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .btn-primary { background: var(--text); color: var(--bg); }
+  .btn-secondary { background: var(--surface); border-color: var(--border); }
+  .btn-danger { background: var(--surface); border-color: var(--border); color: var(--danger); }
+  .btn:disabled { opacity: .5; }
+  .btn-row { display: flex; gap: 10px; margin-top: 12px; }
+  .btn-row .btn { flex: 1; }
+  .label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 22px 4px 8px; }
+
+  /* ---------- Search + segmented ---------- */
+  .search { position: relative; margin: 6px 0 12px; }
+  .search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--faint); width: 18px; height: 18px; }
+  .search input { padding-left: 38px; height: 42px; }
+  .seg { display: flex; background: var(--surface-2); border-radius: 10px; padding: 3px; margin-bottom: 4px; }
+  .seg button { flex: 1; border: 0; background: transparent; height: 32px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+  .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+  /* ---------- Grouped list ---------- */
+  .group { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .item { display: flex; gap: 12px; padding: 12px 14px; align-items: flex-start; border-top: 1px solid var(--border); }
+  .item:first-child { border-top: 0; }
+  .item-main { flex: 1; min-width: 0; }
+  .item-title { font-weight: 500; word-wrap: break-word; }
+  .item.done .item-title { color: var(--faint); text-decoration: line-through; }
+  .item-body { color: var(--muted); font-size: 14px; margin-top: 2px; white-space: pre-wrap; word-wrap: break-word; }
+  .note .item-body { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .note.open .item-body { -webkit-line-clamp: unset; display: block; }
+  .note .item-main { cursor: pointer; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--surface-2); font-size: 12px; color: var(--muted); }
+  .chip svg { width: 13px; height: 13px; }
+  .chip.overdue { background: var(--danger-soft); color: var(--danger); }
+  .chip.today { background: var(--accent-soft); color: var(--accent); }
+  .chip.high { color: var(--danger); background: var(--danger-soft); }
+  .chip.kind { cursor: pointer; border: 1px solid var(--border); background: var(--surface); }
+  .del { border: 0; background: transparent; color: var(--faint); padding: 2px; cursor: pointer; border-radius: 6px; }
+  .del:active { color: var(--danger); }
+  .del.armed { color: var(--danger); background: var(--danger-soft); }
+
+  /* Round checkbox */
+  .check { appearance: none; -webkit-appearance: none; width: 22px; height: 22px; margin: 1px 0 0; border: 2px solid var(--faint);
+           border-radius: 50%; cursor: pointer; flex: none; display: grid; place-items: center; transition: all .15s; }
+  .check:checked { background: var(--accent); border-color: var(--accent); }
+  .check:checked::after { content: ""; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
+  .check.prio-1 { border-color: var(--danger); }
+  .check.square { border-radius: 6px; }
+
+  .empty { text-align: center; color: var(--muted); padding: 48px 16px; }
+  .empty svg { width: 36px; height: 36px; color: var(--faint); margin-bottom: 8px; }
+  .notice { font-size: 13px; color: var(--muted); padding: 10px 12px; background: var(--surface-2); border-radius: 10px; margin: 14px 0 10px; white-space: pre-wrap; }
+  .notice.warn { color: var(--warn); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+
+  /* ---------- Bottom tab bar ---------- */
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--surface) 92%, transparent);
+             backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--border);
+             padding-bottom: env(safe-area-inset-bottom); z-index: 10; }
+  nav.tabs .inner { max-width: 640px; margin: 0 auto; display: flex; }
+  nav.tabs button { flex: 1; border: 0; background: transparent; padding: 9px 0 7px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+                    font-size: 11px; font-weight: 600; color: var(--faint); cursor: pointer; position: relative; }
+  nav.tabs button.on { color: var(--text); }
+  .badge { position: absolute; top: 4px; left: calc(50% + 8px); min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
+           background: var(--danger); color: #fff; font-size: 10px; line-height: 17px; }
+
+  /* ---------- Toast ---------- */
+  #toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+           background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 10px; font-size: 14px; font-weight: 500;
+           box-shadow: 0 6px 20px rgba(0,0,0,.15); z-index: 20; max-width: 90vw; }
+
+  /* ---------- Login ---------- */
+  .login { min-height: 80vh; display: flex; flex-direction: column; justify-content: center; max-width: 380px; margin: 0 auto; }
+  .login img { width: 56px; height: 56px; border-radius: 14px; margin-bottom: 18px; }
+  .login .field { margin-top: 10px; }
+  .spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>🧠 MyBrain</h1>
-  <button id="btnSettings" class="ghost small">⚙️</button>
-</header>
+<!-- SVG icon set (Lucide-style line icons, drawn by hand) -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4M4 4h13l-2 4 2 4H4"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+</svg>
 
-<main>
+<div class="wrap">
+  <header id="header" class="hidden">
+    <div class="head-row">
+      <div><h1 id="title">Inbox</h1><div class="sub" id="subtitle"></div></div>
+      <button id="btnSettings" class="icon-btn" aria-label="Settings"><svg class="i"><use href="#i-gear"/></svg></button>
+    </div>
+  </header>
+
   <!-- LOGIN -->
-  <section id="viewLogin" class="hidden">
-    <p>Sign in to your private space.</p>
-    <input id="email" type="email" placeholder="Email" autocomplete="email">
-    <div style="height:8px"></div>
-    <input id="password" type="password" placeholder="Password" autocomplete="current-password">
-    <div class="row">
-      <button id="btnLogin">Log in</button>
-      <button id="btnSignup" class="ghost">Sign up</button>
+  <section id="viewLogin" class="login hidden">
+    <img src="icons/icon-192.png" alt="">
+    <h1>MyBrain</h1>
+    <div class="sub">Your private tasks and notes.</div>
+    <input id="email" class="field" type="email" placeholder="Email" autocomplete="email" style="margin-top:22px">
+    <input id="password" class="field" type="password" placeholder="Password" autocomplete="current-password">
+    <div class="btn-row">
+      <button id="btnLogin" class="btn btn-primary">Log in</button>
+      <button id="btnSignup" class="btn btn-secondary">Sign up</button>
     </div>
   </section>
 
   <!-- CAPTURE -->
   <section id="viewCapture" class="hidden">
-    <textarea id="rough" placeholder="Dump anything here, any language, any mess.&#10;e.g. call electrician tmrw, idea: SSL fairness loss using group-balanced negatives, buy milk, GTU marks upload by friday"></textarea>
-    <div class="row">
-      <button id="btnOrganize">✨ Organize</button>
-      <button id="btnQuick" class="ghost">Save as note</button>
+    <textarea id="rough" class="field" placeholder="Write anything — tasks, ideas, reminders. Mix languages freely.&#10;&#10;Example: call electrician tomorrow, idea: group-balanced negatives for SSL, buy milk"></textarea>
+    <div class="btn-row">
+      <button id="btnOrganize" class="btn btn-primary"><svg class="i"><use href="#i-spark"/></svg><span>Organize</span></button>
+      <button id="btnQuick" class="btn btn-secondary">Save as note</button>
     </div>
-    <div id="preview"></div>
-    <div class="row hidden" id="previewActions">
-      <button id="btnSavePreview">Save selected</button>
-      <button id="btnCancelPreview" class="ghost">Cancel</button>
+    <div id="previewWrap" class="hidden">
+      <div id="source" class="notice"></div>
+      <div id="preview" class="group"></div>
+      <div class="btn-row">
+        <button id="btnSavePreview" class="btn btn-primary">Save</button>
+        <button id="btnCancelPreview" class="btn btn-secondary">Discard</button>
+      </div>
     </div>
   </section>
 
-  <!-- LIST (todos or notes) -->
+  <!-- LIST -->
   <section id="viewList" class="hidden">
-    <div class="row">
-      <input id="search" placeholder="Search…">
-      <select id="filter" style="flex:0 0 120px">
-        <option value="open">Open</option>
-        <option value="all">All</option>
-        <option value="done">Done</option>
-      </select>
+    <div class="search"><svg class="i"><use href="#i-search"/></svg><input id="search" class="field" placeholder="Search"></div>
+    <div class="seg" id="seg">
+      <button data-f="open" class="on">Open</button>
+      <button data-f="done">Completed</button>
+      <button data-f="all">All</button>
     </div>
     <div id="list"></div>
   </section>
 
   <!-- SETTINGS -->
   <section id="viewSettings" class="hidden">
-    <label>Gemini API key (stays only on this device)</label>
-    <input id="geminiKey" type="password" placeholder="Paste key from aistudio.google.com">
-    <div style="height:8px"></div>
-    <label>Gemini model</label>
-    <input id="geminiModel" placeholder="gemini-3.5-flash-lite">
-    <div class="row">
-      <button id="btnSaveSettings">Save</button>
-      <button id="btnExport" class="ghost">Export backup (JSON)</button>
+    <div class="label">AI</div>
+    <div class="group" style="padding:14px">
+      <div class="sub" style="margin:0 0 6px">Gemini API key · stored only on this device</div>
+      <input id="geminiKey" class="field" type="password" placeholder="Paste key from aistudio.google.com">
+      <div class="sub" style="margin:12px 0 6px">Model</div>
+      <input id="geminiModel" class="field" placeholder="gemini-3.5-flash-lite">
+      <div class="btn-row">
+        <button id="btnSaveSettings" class="btn btn-primary">Save</button>
+        <button id="btnTestAI" class="btn btn-secondary">Test connection</button>
+      </div>
+      <div id="aiTestOut" class="notice mono hidden"></div>
     </div>
-    <div class="row">
-      <button id="btnTestAI" class="ghost">🔌 Test AI</button>
-      <button id="btnLogout" class="ghost">Log out</button>
-    </div>
-    <div id="aiTestOut" class="card meta hidden" style="white-space:pre-wrap"></div>
-    <p class="meta">Without a key, Organize uses the simple offline parser.</p>
-  </section>
-</main>
 
-<nav id="nav" class="hidden">
-  <button data-view="capture" class="on">➕ Capture</button>
-  <button data-view="todo">✅ To-do</button>
-  <button data-view="note">📝 Notes</button>
+    <div class="label">Data</div>
+    <div class="group" style="padding:14px">
+      <div class="sub" style="margin:0 0 10px">Download everything as a JSON file. Keep it in Google Drive, not GitHub.</div>
+      <button id="btnExport" class="btn btn-secondary" style="width:100%"><svg class="i"><use href="#i-download"/></svg>Export backup</button>
+    </div>
+
+    <div class="label">Account</div>
+    <div class="group" style="padding:14px">
+      <div class="sub" id="whoami" style="margin:0 0 10px"></div>
+      <button id="btnLogout" class="btn btn-danger" style="width:100%">Log out</button>
+    </div>
+  </section>
+</div>
+
+<nav class="tabs hidden" id="nav">
+  <div class="inner">
+    <button data-view="capture" class="on"><svg class="i"><use href="#i-inbox"/></svg>Capture</button>
+    <button data-view="todo"><svg class="i"><use href="#i-check"/></svg>Tasks<span class="badge hidden" id="badge"></span></button>
+    <button data-view="note"><svg class="i"><use href="#i-note"/></svg>Notes</button>
+  </div>
 </nav>
 
-<div id="status" class="hidden"></div>
+<div id="toast" class="hidden"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-// ============ 1. CONFIG — fill these two from Supabase → Project Settings → API ============
-// The anon key is meant to be public. Row Level Security keeps your data private.
+// ============ 1. CONFIG ============
+// The publishable key is meant to be public. Row Level Security keeps your data private.
 const SUPABASE_URL = "https://yncbwqhytcxkqrlonkkk.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_Sf-aeTSLVtF1aR2-KUSWMA_ecVQidxd";
+const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const DEBUG = true; // set false to silence console logs
 
 // ============ 2. STATE ============
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const state = { user: null, items: [], view: "capture", preview: [] };
+const state = { user: null, items: [], view: "capture", preview: [], source: "", filter: "open", openNote: null };
 const $ = (id) => document.getElementById(id);
 const log = (...a) => DEBUG && console.log("[MyBrain]", ...a);
+const icon = (name) => `<svg class="i"><use href="#i-${name}"/></svg>`;
+const TITLES = { capture: "Capture", todo: "Tasks", note: "Notes", settings: "Settings" };
 
 // ============ 3. BOOT ============
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch((e) => log("sw failed", e));
 boot();
 
 async function boot() {
   $("geminiKey").value = localStorage.getItem("geminiKey") || "";
-  $("geminiModel").value = localStorage.getItem("geminiModel") || "gemini-3.5-flash-lite";
+  $("geminiModel").value = localStorage.getItem("geminiModel") || DEFAULT_MODEL;
   wireEvents();
   const { data } = await db.auth.getSession();
   state.user = data.session?.user || null;
@@ -140,49 +274,82 @@ async function boot() {
 function wireEvents() {
   $("btnLogin").onclick = () => auth("login");
   $("btnSignup").onclick = () => auth("signup");
-  $("btnLogout").onclick = async () => { await db.auth.signOut(); state.user = null; show("login"); };
-  $("btnSettings").onclick = () => show(state.user ? "settings" : "login");
+  $("password").onkeydown = (e) => e.key === "Enter" && auth("login");
+  $("btnLogout").onclick = async () => { await db.auth.signOut(); state.user = null; state.items = []; show("login"); };
+  $("btnSettings").onclick = () => show(state.view === "settings" ? "capture" : "settings");
   $("btnSaveSettings").onclick = () => {
     localStorage.setItem("geminiKey", $("geminiKey").value.trim());
-    localStorage.setItem("geminiModel", $("geminiModel").value.trim() || "gemini-3.5-flash-lite");
-    toast("Saved");
+    localStorage.setItem("geminiModel", $("geminiModel").value.trim() || DEFAULT_MODEL);
+    toast("Settings saved");
   };
-  $("btnExport").onclick = exportBackup;
   $("btnTestAI").onclick = testAI;
+  $("btnExport").onclick = exportBackup;
   $("btnOrganize").onclick = organize;
   $("btnQuick").onclick = quickNote;
   $("btnSavePreview").onclick = savePreview;
   $("btnCancelPreview").onclick = clearPreview;
   $("search").oninput = renderList;
-  $("filter").onchange = renderList;
-  document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
+  document.querySelectorAll("#seg button").forEach((b) => (b.onclick = () => {
+    state.filter = b.dataset.f;
+    document.querySelectorAll("#seg button").forEach((x) => x.classList.toggle("on", x === b));
+    renderList();
+  }));
+  document.querySelectorAll("#nav button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
 }
 
 // ============ 5. VIEWS ============
 function show(view) {
   state.view = view;
+  const loggedIn = view !== "login";
+  $("header").classList.toggle("hidden", !loggedIn);
+  $("nav").classList.toggle("hidden", !loggedIn);
   $("viewLogin").classList.toggle("hidden", view !== "login");
   $("viewCapture").classList.toggle("hidden", view !== "capture");
   $("viewList").classList.toggle("hidden", view !== "todo" && view !== "note");
   $("viewSettings").classList.toggle("hidden", view !== "settings");
-  $("nav").classList.toggle("hidden", view === "login");
-  $("filter").classList.toggle("hidden", view === "note");
-  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.view === view));
+  $("seg").classList.toggle("hidden", view !== "todo");
+  document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", b.dataset.view === view));
+  if (!loggedIn) return;
+  $("title").textContent = TITLES[view];
+  $("whoami").textContent = "Signed in as " + (state.user?.email || "");
+  $("search").value = "";
+  updateHeader();
   if (view === "todo" || view === "note") renderList();
 }
 
-function toast(msg, ms = 2000) {
-  const s = $("status");
-  s.textContent = msg; s.classList.remove("hidden");
-  clearTimeout(toast.t); toast.t = setTimeout(() => s.classList.add("hidden"), ms);
+function updateHeader() {
+  const today = iso(new Date());
+  const open = state.items.filter((i) => i.kind === "todo" && !i.done);
+  const dueNow = open.filter((i) => i.due && i.due <= today).length;
+  const notes = state.items.filter((i) => i.kind === "note").length;
+  const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  const sub = { capture: dateStr, todo: `${open.length} open · ${dueNow} due today or overdue`, note: `${notes} notes`, settings: "" };
+  $("subtitle").textContent = sub[state.view] || "";
+  $("badge").textContent = dueNow;
+  $("badge").classList.toggle("hidden", !dueNow);
+}
+
+function toast(msg, ms = 2200) {
+  const t = $("toast");
+  t.textContent = msg; t.classList.remove("hidden");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add("hidden"), ms);
+}
+
+function busy(btn, on) {
+  btn.disabled = on;
+  if (on) { btn.dataset.html = btn.innerHTML; btn.innerHTML = `<span class="spinner"></span>`; }
+  else if (btn.dataset.html) btn.innerHTML = btn.dataset.html;
 }
 
 // ============ 6. AUTH ============
 async function auth(mode) {
   const email = $("email").value.trim(), password = $("password").value;
-  if (!email || password.length < 6) return toast("Email + password (6+ chars)");
+  if (!email || password.length < 6) return toast("Enter email and a password of 6+ characters");
+  const btn = mode === "signup" ? $("btnSignup") : $("btnLogin");
+  busy(btn, true);
   const fn = mode === "signup" ? db.auth.signUp : db.auth.signInWithPassword;
   const { data, error } = await fn.call(db.auth, { email, password });
+  busy(btn, false);
   log("auth", mode, data, error);
   if (error) return toast(error.message, 4000);
   if (!data.session) return toast("Check your email to confirm, then log in", 5000);
@@ -195,15 +362,16 @@ async function auth(mode) {
 async function loadItems() {
   const { data, error } = await db.from("items").select("*").order("created_at", { ascending: false });
   log("loadItems", data?.length, error);
-  if (error) return toast("Load failed: " + error.message, 4000);
+  if (error) return toast("Could not load: " + error.message, 4000);
   state.items = data;
 }
 
 async function insertItems(rows) {
   const { data, error } = await db.from("items").insert(rows).select();
   log("insertItems", rows, data, error);
-  if (error) { toast("Save failed: " + error.message, 4000); return false; }
+  if (error) { toast("Could not save: " + error.message, 4000); return false; }
   state.items = [...data, ...state.items];
+  updateHeader();
   return true;
 }
 
@@ -211,46 +379,47 @@ async function updateItem(id, patch) {
   patch.updated_at = new Date().toISOString();
   const { error } = await db.from("items").update(patch).eq("id", id);
   log("updateItem", id, patch, error);
-  if (error) return toast("Update failed: " + error.message, 4000);
+  if (error) return toast("Could not update: " + error.message, 4000);
   Object.assign(state.items.find((i) => i.id === id), patch);
-  renderList();
+  updateHeader();
+  setTimeout(renderList, patch.done ? 350 : 0); // short pause so the tick is visible
 }
 
-async function deleteItem(id) {
-  if (!confirmDelete(id)) return;
+async function deleteItem(id, btn) {
+  if (confirmDelete.armed !== id) { // first tap arms, second tap deletes
+    document.querySelectorAll(".del.armed").forEach((b) => b.classList.remove("armed"));
+    confirmDelete.armed = id; btn.classList.add("armed"); return toast("Tap again to delete");
+  }
+  confirmDelete.armed = null;
   const { error } = await db.from("items").delete().eq("id", id);
   log("deleteItem", id, error);
-  if (error) return toast("Delete failed: " + error.message, 4000);
+  if (error) return toast("Could not delete: " + error.message, 4000);
   state.items = state.items.filter((i) => i.id !== id);
-  renderList();
+  updateHeader(); renderList(); toast("Deleted");
 }
-
-// Two taps to delete (no browser popup)
-function confirmDelete(id) {
-  if (confirmDelete.armed === id) { confirmDelete.armed = null; return true; }
-  confirmDelete.armed = id; toast("Tap 🗑 again to delete"); return false;
-}
+const confirmDelete = { armed: null };
 
 // ============ 8. ORGANIZE (AI → fallback) ============
 async function organize() {
   const text = $("rough").value.trim();
   if (!text) return toast("Write something first");
   const key = localStorage.getItem("geminiKey");
-  let items = null, source = "";
-  if (!key) source = "⚠️ No Gemini key saved → offline parser. Add key in ⚙️.";
+  let items = null, source = "", warn = false;
+  busy($("btnOrganize"), true);
+  if (!key) { source = "No AI key saved, so the basic parser was used. Add a key in Settings."; warn = true; }
   else {
-    toast("Thinking…", 15000);
-    try { items = await aiOrganize(text, key); source = "✨ Organized by " + (localStorage.getItem("geminiModel") || "gemini"); }
-    catch (e) { log("AI failed", e); source = "⚠️ AI failed: " + e.message + "\n→ used offline parser. Open ⚙️ → Test AI."; }
-    toast("Done", 800);
+    try { items = await aiOrganize(text, key); source = `Organized with ${localStorage.getItem("geminiModel") || DEFAULT_MODEL}. Review, then save.`; }
+    catch (e) { log("AI failed", e); source = `AI failed (${e.message}). Used the basic parser instead.`; warn = true; }
   }
+  busy($("btnOrganize"), false);
   if (!items) items = offlineOrganize(text);
   state.preview = items.map((i) => ({ ...i, keep: true }));
   state.source = source;
+  $("source").classList.toggle("warn", warn);
   renderPreview();
 }
 
-// Settings → Test AI: lists models this key can use, fixes the model name if needed
+// Settings → Test connection: lists models this key can use, fixes the model name if needed
 async function testAI() {
   const out = $("aiTestOut");
   out.classList.remove("hidden");
@@ -270,29 +439,29 @@ async function testAI() {
     if (!names.length) throw new Error("Key works, but no Flash text model found.");
     let model = $("geminiModel").value.trim();
     if (!names.includes(model)) {
-      model = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"].find((n) => names.includes(n)) || names.find((n) => /flash-lite/.test(n)) || names[0];
+      model = [DEFAULT_MODEL, "gemini-flash-lite-latest"].find((n) => names.includes(n)) || names.find((n) => /flash-lite/.test(n)) || names[0];
       $("geminiModel").value = model;
     }
     localStorage.setItem("geminiModel", model);
-    out.textContent = "Key OK.\nUsing model: " + model + "\n\nAvailable: " + names.join(", ");
-    out.textContent += "\n\nTest call running…";
-    await aiOrganize("test: buy milk", key); // real call to confirm quota
-    out.textContent += "\n\n✅ Test call worked.";
+    out.textContent = `Key OK · model: ${model}\nTest call running…`;
+    await aiOrganize("test: buy milk", key);
+    out.textContent = `✓ Connected · model: ${model}`;
   } catch (e) {
-    out.textContent = "❌ " + e.message;
+    out.textContent = "✕ " + e.message;
   }
 }
 
 async function aiOrganize(text, key) {
-  const model = localStorage.getItem("geminiModel") || "gemini-3.5-flash-lite";
+  const model = localStorage.getItem("geminiModel") || DEFAULT_MODEL;
   const today = iso(new Date());
-  const prompt = `Today is ${today}. Split the rough text below into separate items.
+  const weekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
+  const prompt = `Today is ${weekday}, ${today}. Split the rough text below into separate items.
 Each item is either a "todo" (an action to do) or a "note" (info, idea, thought).
 Rules:
-- title: short, clear, in English, max 80 chars. Fix spelling. Hinglish/Gujarati input is fine.
+- title: short, clear, in English, max 80 chars. Fix spelling. Hinglish/Gujarati input is fine ("kal" = tomorrow, "aaj" = today).
 - body: extra details only, else "".
-- tags: 1-3 lowercase single-word tags (e.g. work, home, research, teaching, money).
-- due: YYYY-MM-DD only if a date/day is mentioned ("tmrw", "friday"), else null.
+- tags: 1-3 lowercase single-word tags (e.g. work, home, research, teaching, money, family).
+- due: YYYY-MM-DD only if a date/day is mentioned, else null.
 - priority: 1 high, 2 normal, 3 low.
 Return JSON only: {"items":[{"kind","title","body","tags","due","priority"}]}
 
@@ -300,8 +469,8 @@ TEXT:
 ${text}`;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const res = await fetch(url, {
-    signal: AbortSignal.timeout(25000), // never hang silently
     method: "POST",
+    signal: AbortSignal.timeout(25000), // never hang silently
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
@@ -311,11 +480,7 @@ ${text}`;
   const json = await res.json();
   log("gemini raw", json);
   if (!res.ok) throw new Error(json.error?.message || res.status);
-  const parts = json.candidates?.[0]?.content?.parts || [];
-  const textPart = parts.filter((p) => p.text && !p.thought).pop();
-  if (!textPart) throw new Error("Empty AI reply (" + (json.candidates?.[0]?.finishReason || "no candidates") + ")");
-  const out = JSON.parse(textPart.text.replace(/^```(json)?|```$/g, "").trim());
-  if (!Array.isArray(out.items)) throw new Error("AI reply missing items list");
+  const out = JSON.parse(json.candidates[0].content.parts[0].text);
   return out.items.map(cleanItem);
 }
 
@@ -324,7 +489,7 @@ function offlineOrganize(text) {
   const verbs = /^(call|buy|send|pay|email|mail|book|fix|submit|upload|finish|check|meet|ask|prepare|make|write|read|go|todo|remind|complete)\b/i;
   const chunks = text.split(/\n|;|,(?=\s*[a-z])/i).map((s) => s.replace(/^[-*•\d.)\s]+/, "").trim()).filter(Boolean);
   return chunks.map((c) => {
-    const isTodo = verbs.test(c) || /\b(todo|tmrw|tomorrow|today|by \w+day)\b/i.test(c);
+    const isTodo = verbs.test(c) || /\b(todo|tmrw|tomorrow|today|kal|aaj|karna|lena|by \w+day)\b/i.test(c);
     const isIdea = /^(idea|note)\s*:/i.test(c);
     return cleanItem({
       kind: isTodo && !isIdea ? "todo" : "note",
@@ -360,16 +525,20 @@ function cleanItem(i) {
 
 // ============ 9. PREVIEW ============
 function renderPreview() {
-  const head = state.preview.length && state.source ? `<div class="meta" style="white-space:pre-wrap;margin:6px 0">${esc(state.source)}</div>` : "";
-  $("preview").innerHTML = head + state.preview.map((p, n) => `
-    <div class="card p${p.priority}">
-      <label><input type="checkbox" data-n="${n}" ${p.keep ? "checked" : ""} style="width:auto"> ${p.kind === "todo" ? "✅" : "📝"}
-        <span class="title">${esc(p.title)}</span></label>
-      ${p.body ? `<div class="body">${esc(p.body)}</div>` : ""}
-      <div class="meta">${p.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}${p.due ? "📅 " + p.due : ""}
-        <button class="ghost small" data-flip="${n}">→ ${p.kind === "todo" ? "note" : "todo"}</button></div>
+  $("previewWrap").classList.toggle("hidden", !state.preview.length);
+  $("source").textContent = state.source;
+  $("preview").innerHTML = state.preview.map((p, n) => `
+    <div class="item">
+      <input type="checkbox" class="check square" data-n="${n}" ${p.keep ? "checked" : ""} aria-label="Include">
+      <div class="item-main">
+        <div class="item-title">${esc(p.title)}</div>
+        ${p.body ? `<div class="item-body">${esc(p.body)}</div>` : ""}
+        <div class="meta">
+          <span class="chip kind" data-flip="${n}">${icon(p.kind === "todo" ? "check" : "note")}${p.kind === "todo" ? "Task" : "Note"}</span>
+          ${metaChips(p)}
+        </div>
+      </div>
     </div>`).join("");
-  $("previewActions").classList.toggle("hidden", !state.preview.length);
   $("preview").querySelectorAll("[data-n]").forEach((c) => (c.onchange = () => (state.preview[c.dataset.n].keep = c.checked)));
   $("preview").querySelectorAll("[data-flip]").forEach((b) => (b.onclick = () => {
     const p = state.preview[b.dataset.flip]; p.kind = p.kind === "todo" ? "note" : "todo"; renderPreview();
@@ -379,7 +548,10 @@ function renderPreview() {
 async function savePreview() {
   const rows = state.preview.filter((p) => p.keep).map(({ keep, ...r }) => r);
   if (!rows.length) return toast("Nothing selected");
-  if (await insertItems(rows)) { toast(`Saved ${rows.length}`); $("rough").value = ""; clearPreview(); }
+  busy($("btnSavePreview"), true);
+  const ok = await insertItems(rows);
+  busy($("btnSavePreview"), false);
+  if (ok) { toast(`Saved ${rows.length} item${rows.length > 1 ? "s" : ""}`); $("rough").value = ""; clearPreview(); }
 }
 
 function clearPreview() { state.preview = []; renderPreview(); }
@@ -393,29 +565,78 @@ async function quickNote() {
 
 // ============ 10. LIST ============
 function renderList() {
-  const kind = state.view, q = $("search").value.toLowerCase(), f = $("filter").value;
+  const kind = state.view, q = $("search").value.toLowerCase(), f = state.filter;
   let rows = state.items.filter((i) => i.kind === kind);
-  if (kind === "todo" && f === "open") rows = rows.filter((i) => !i.done);
-  if (kind === "todo" && f === "done") rows = rows.filter((i) => i.done);
   if (q) rows = rows.filter((i) => (i.title + " " + i.body + " " + (i.tags || []).join(" ")).toLowerCase().includes(q));
-  if (kind === "todo") rows.sort((a, b) => (a.done - b.done) || (a.priority - b.priority) || String(a.due || "9").localeCompare(String(b.due || "9")));
-  $("list").innerHTML = rows.length ? rows.map(cardHtml).join("") : `<p class="meta">Nothing here yet.</p>`;
+
+  if (kind === "note") {
+    $("list").innerHTML = rows.length ? `<div class="group">${rows.map(itemHtml).join("")}</div>` : emptyHtml("note", q ? "No matching notes" : "No notes yet");
+  } else {
+    if (f === "open") rows = rows.filter((i) => !i.done);
+    if (f === "done") rows = rows.filter((i) => i.done);
+    rows.sort((a, b) => (a.done - b.done) || String(a.due || "9999").localeCompare(String(b.due || "9999")) || (a.priority - b.priority));
+    const today = iso(new Date());
+    const groups = [
+      ["Overdue", rows.filter((i) => !i.done && i.due && i.due < today)],
+      ["Today", rows.filter((i) => !i.done && i.due === today)],
+      ["Upcoming", rows.filter((i) => !i.done && i.due && i.due > today)],
+      ["No date", rows.filter((i) => !i.done && !i.due)],
+      ["Completed", rows.filter((i) => i.done)],
+    ].filter(([, g]) => g.length);
+    $("list").innerHTML = groups.length
+      ? groups.map(([name, g]) => `<div class="label">${name} · ${g.length}</div><div class="group">${g.map(itemHtml).join("")}</div>`).join("")
+      : emptyHtml("check", q ? "No matching tasks" : f === "done" ? "Nothing completed yet" : "All clear");
+  }
   $("list").querySelectorAll("[data-done]").forEach((c) => (c.onchange = () => updateItem(c.dataset.done, { done: c.checked })));
-  $("list").querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteItem(b.dataset.del)));
+  $("list").querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteItem(b.dataset.del, b)));
+  $("list").querySelectorAll("[data-open]").forEach((el) => (el.onclick = () => el.closest(".note").classList.toggle("open")));
 }
 
-function cardHtml(i) {
-  const overdue = i.due && !i.done && i.due < iso(new Date());
-  return `<div class="card p${i.priority} ${i.done ? "done" : ""}">
-    <div style="display:flex;gap:8px;align-items:flex-start">
-      ${i.kind === "todo" ? `<input type="checkbox" data-done="${i.id}" ${i.done ? "checked" : ""} style="width:auto;margin-top:4px">` : ""}
-      <div style="flex:1"><div class="title">${esc(i.title)}</div>
-        ${i.body ? `<div class="body">${esc(i.body)}</div>` : ""}
-        <div class="meta">${(i.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}
-          ${i.due ? `<span style="color:${overdue ? "var(--bad)" : "inherit"}">📅 ${i.due}</span>` : ""}
-          · ${new Date(i.created_at).toLocaleDateString()}</div></div>
-      <button class="ghost small" data-del="${i.id}">🗑</button>
-    </div></div>`;
+function itemHtml(i) {
+  const isTodo = i.kind === "todo";
+  return `<div class="item ${isTodo ? "" : "note"} ${i.done ? "done" : ""}">
+    ${isTodo ? `<input type="checkbox" class="check prio-${i.priority}" data-done="${i.id}" ${i.done ? "checked" : ""} aria-label="Done">` : ""}
+    <div class="item-main" ${isTodo ? "" : "data-open"}>
+      <div class="item-title">${esc(i.title)}</div>
+      ${i.body ? `<div class="item-body">${esc(i.body)}</div>` : ""}
+      <div class="meta">${metaChips(i)}${isTodo ? "" : `<span>${relDate(i.created_at)}</span>`}</div>
+    </div>
+    <button class="del" data-del="${i.id}" aria-label="Delete">${icon("trash")}</button>
+  </div>`;
+}
+
+function metaChips(i) {
+  const today = iso(new Date());
+  let html = "";
+  if (i.due) {
+    const cls = !i.done && i.due < today ? "overdue" : i.due === today ? "today" : "";
+    html += `<span class="chip ${cls}">${icon("cal")}${dueLabel(i.due)}</span>`;
+  }
+  if (i.priority === 1) html += `<span class="chip high">${icon("flag")}High</span>`;
+  (i.tags || []).forEach((t) => (html += `<span class="chip">${icon("tag")}${esc(t)}</span>`));
+  return html;
+}
+
+function dueLabel(d) {
+  const today = new Date(iso(new Date())), due = new Date(d);
+  const diff = Math.round((due - today) / 86400000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff === -1) return "Yesterday";
+  if (diff > 1 && diff < 7) return due.toLocaleDateString(undefined, { weekday: "short" });
+  return due.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+function relDate(ts) {
+  const d = new Date(ts), mins = (Date.now() - d) / 60000;
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${Math.floor(mins)}m ago`;
+  if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+function emptyHtml(ic, text) {
+  return `<div class="empty"><svg class="i"><use href="#i-${ic}"/></svg><div>${text}</div></div>`;
 }
 
 // ============ 11. BACKUP ============
@@ -425,6 +646,7 @@ function exportBackup() {
   a.href = URL.createObjectURL(blob);
   a.download = `mybrain-backup-${iso(new Date())}.json`;
   a.click();
+  toast(`Exported ${state.items.length} items`);
 }
 
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }

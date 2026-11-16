@@ -9,6 +9,7 @@ Personal to-do list + notes. Dump rough text (English / Hinglish / Gujarati), AI
 |---|---|
 | `index.html` | The whole app |
 | `schema.sql` | Database table + privacy rules (run once in Supabase) |
+| `manifest.json`, `sw.js`, `icons/` | Make it installable as a phone/desktop app (PWA) |
 | `.github/workflows/keepalive.yml` | Pings Supabase every 3 days so the free project never pauses |
 
 ## Security notes
