@@ -252,7 +252,7 @@ const SUPABASE_URL = "https://yncbwqhytcxkqrlonkkk.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_Sf-aeTSLVtF1aR2-KUSWMA_ecVQidxd";
 // AI providers. Keys live only in this browser (localStorage), never in the repo.
 const PROVIDERS = {
-  groq:   { label: "Groq", defaultModel: "qwen/qwen3-32b", hint: "Groq API key (starts with gsk_) · free at console.groq.com · stored only on this device" },
+  groq:   { label: "Groq", defaultModel: "qwen/qwen3.8-27b", hint: "Groq API key (starts with gsk_) · free at console.groq.com · stored only on this device" },
   gemini: { label: "Gemini", defaultModel: "gemini-3.5-flash-lite", hint: "Gemini API key · free at aistudio.google.com · stored only on this device" },
 };
 const DEBUG = true; // set false to silence console logs
@@ -470,7 +470,7 @@ async function testAI() {
     let model = cfg.model;
     if (!names.includes(model)) {
       const prefer = cfg.provider === "groq"
-        ? ["qwen/qwen3-32b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
+        ? [names.filter((n) => /^qwen\//.test(n)).sort().pop(), "openai/gpt-oss-120b", "openai/gpt-oss-20b"] // newest Qwen first
         : ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"];
       model = prefer.find((n) => names.includes(n)) || names.find((n) => /qwen|flash-lite/.test(n)) || names[0];
       $("aiModel").value = model;
