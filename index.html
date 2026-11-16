@@ -204,10 +204,15 @@
   <section id="viewSettings" class="hidden">
     <div class="label">AI</div>
     <div class="group" style="padding:14px">
-      <div class="sub" style="margin:0 0 6px">Gemini API key · stored only on this device</div>
-      <input id="geminiKey" class="field" type="password" placeholder="Paste key from aistudio.google.com">
+      <div class="sub" style="margin:0 0 6px">Provider</div>
+      <div class="seg" id="provSeg">
+        <button data-p="groq">Groq · Qwen</button>
+        <button data-p="gemini">Google · Gemini</button>
+      </div>
+      <div class="sub" id="keyHint" style="margin:12px 0 6px"></div>
+      <input id="aiKey" class="field" type="password" placeholder="Paste API key" autocomplete="off">
       <div class="sub" style="margin:12px 0 6px">Model</div>
-      <input id="geminiModel" class="field" placeholder="gemini-3.5-flash-lite">
+      <input id="aiModel" class="field" autocomplete="off">
       <div class="btn-row">
         <button id="btnSaveSettings" class="btn btn-primary">Save</button>
         <button id="btnTestAI" class="btn btn-secondary">Test connection</button>
@@ -245,12 +250,16 @@
 // The publishable key is meant to be public. Row Level Security keeps your data private.
 const SUPABASE_URL = "https://yncbwqhytcxkqrlonkkk.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_Sf-aeTSLVtF1aR2-KUSWMA_ecVQidxd";
-const DEFAULT_MODEL = "gemini-3.5-flash-lite";
+// AI providers. Keys live only in this browser (localStorage), never in the repo.
+const PROVIDERS = {
+  groq:   { label: "Groq", defaultModel: "qwen/qwen3-32b", hint: "Groq API key (starts with gsk_) · free at console.groq.com · stored only on this device" },
+  gemini: { label: "Gemini", defaultModel: "gemini-3.5-flash-lite", hint: "Gemini API key · free at aistudio.google.com · stored only on this device" },
+};
 const DEBUG = true; // set false to silence console logs
 
 // ============ 2. STATE ============
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const state = { user: null, items: [], view: "capture", preview: [], source: "", filter: "open", openNote: null };
+const state = { prov: "groq", user: null, items: [], view: "capture", preview: [], source: "", filter: "open", openNote: null };
 const $ = (id) => document.getElementById(id);
 const log = (...a) => DEBUG && console.log("[MyBrain]", ...a);
 const icon = (name) => `<svg class="i"><use href="#i-${name}"/></svg>`;
@@ -261,8 +270,8 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
 boot();
 
 async function boot() {
-  $("geminiKey").value = localStorage.getItem("geminiKey") || "";
-  $("geminiModel").value = localStorage.getItem("geminiModel") || DEFAULT_MODEL;
+  migrateOldKeys();
+  fillSettings(aiCfg().provider);
   wireEvents();
   const { data } = await db.auth.getSession();
   state.user = data.session?.user || null;
@@ -277,11 +286,8 @@ function wireEvents() {
   $("password").onkeydown = (e) => e.key === "Enter" && auth("login");
   $("btnLogout").onclick = async () => { await db.auth.signOut(); state.user = null; state.items = []; show("login"); };
   $("btnSettings").onclick = () => show(state.view === "settings" ? "capture" : "settings");
-  $("btnSaveSettings").onclick = () => {
-    localStorage.setItem("geminiKey", $("geminiKey").value.trim());
-    localStorage.setItem("geminiModel", $("geminiModel").value.trim() || DEFAULT_MODEL);
-    toast("Settings saved");
-  };
+  $("btnSaveSettings").onclick = () => { saveSettings(); toast(`Saved · using ${PROVIDERS[state.prov].label}`); };
+  document.querySelectorAll("#provSeg button").forEach((b) => (b.onclick = () => fillSettings(b.dataset.p)));
   $("btnTestAI").onclick = testAI;
   $("btnExport").onclick = exportBackup;
   $("btnOrganize").onclick = organize;
@@ -399,16 +405,46 @@ async function deleteItem(id, btn) {
 }
 const confirmDelete = { armed: null };
 
-// ============ 8. ORGANIZE (AI → fallback) ============
+// ============ 8. AI SETTINGS ============
+function aiCfg(p = localStorage.getItem("aiProvider") || "groq") {
+  return { provider: p, key: localStorage.getItem("key_" + p) || "", model: localStorage.getItem("model_" + p) || PROVIDERS[p].defaultModel };
+}
+
+// One-time move of the old Gemini-only settings into the new per-provider slots
+function migrateOldKeys() {
+  const k = localStorage.getItem("geminiKey"), m = localStorage.getItem("geminiModel");
+  if (k && !localStorage.getItem("key_gemini")) localStorage.setItem("key_gemini", k);
+  if (m && !localStorage.getItem("model_gemini")) localStorage.setItem("model_gemini", m);
+}
+
+function fillSettings(p) {
+  state.prov = p;
+  const cfg = aiCfg(p);
+  document.querySelectorAll("#provSeg button").forEach((b) => b.classList.toggle("on", b.dataset.p === p));
+  $("keyHint").textContent = PROVIDERS[p].hint;
+  $("aiKey").value = cfg.key;
+  $("aiModel").value = cfg.model;
+  $("aiModel").placeholder = PROVIDERS[p].defaultModel;
+  $("aiTestOut").classList.add("hidden");
+}
+
+function saveSettings() {
+  const p = state.prov;
+  localStorage.setItem("aiProvider", p);
+  localStorage.setItem("key_" + p, $("aiKey").value.trim());
+  localStorage.setItem("model_" + p, $("aiModel").value.trim() || PROVIDERS[p].defaultModel);
+}
+
+// ============ 9. ORGANIZE (AI → fallback) ============
 async function organize() {
   const text = $("rough").value.trim();
   if (!text) return toast("Write something first");
-  const key = localStorage.getItem("geminiKey");
+  const cfg = aiCfg();
   let items = null, source = "", warn = false;
   busy($("btnOrganize"), true);
-  if (!key) { source = "No AI key saved, so the basic parser was used. Add a key in Settings."; warn = true; }
+  if (!cfg.key) { source = `No ${PROVIDERS[cfg.provider].label} key saved, so the basic parser was used. Add a key in Settings.`; warn = true; }
   else {
-    try { items = await aiOrganize(text, key); source = `Organized with ${localStorage.getItem("geminiModel") || DEFAULT_MODEL}. Review, then save.`; }
+    try { items = await aiOrganize(text, cfg); source = `Organized with ${cfg.model}. Review, then save.`; }
     catch (e) { log("AI failed", e); source = `AI failed (${e.message}). Used the basic parser instead.`; warn = true; }
   }
   busy($("btnOrganize"), false);
@@ -419,59 +455,113 @@ async function organize() {
   renderPreview();
 }
 
-// Settings → Test connection: lists models this key can use, fixes the model name if needed
+// Settings → Test connection: checks key, lists models, fixes model name if needed, makes one real call
 async function testAI() {
   const out = $("aiTestOut");
   out.classList.remove("hidden");
-  const key = $("geminiKey").value.trim();
-  if (!key) return (out.textContent = "Paste your key first.");
-  localStorage.setItem("geminiKey", key);
+  saveSettings();
+  const cfg = aiCfg(state.prov);
+  if (!cfg.key) return (out.textContent = "Paste your key first.");
   out.textContent = "Checking key…";
   try {
-    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
-    const json = await res.json();
-    log("listModels", json);
-    if (!res.ok) throw new Error(json.error?.message || "HTTP " + res.status);
-    const names = (json.models || [])
-      .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
-      .map((m) => m.name.replace("models/", ""))
-      .filter((n) => /flash/.test(n) && !/image|tts|audio|live|exp|preview/.test(n));
-    if (!names.length) throw new Error("Key works, but no Flash text model found.");
-    let model = $("geminiModel").value.trim();
+    const names = cfg.provider === "groq" ? await listGroqModels(cfg.key) : await listGeminiModels(cfg.key);
+    if (!names.length) throw new Error("Key works, but no suitable text model found.");
+    let model = cfg.model;
     if (!names.includes(model)) {
-      model = [DEFAULT_MODEL, "gemini-flash-lite-latest"].find((n) => names.includes(n)) || names.find((n) => /flash-lite/.test(n)) || names[0];
-      $("geminiModel").value = model;
+      const prefer = cfg.provider === "groq"
+        ? ["qwen/qwen3-32b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
+        : ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"];
+      model = prefer.find((n) => names.includes(n)) || names.find((n) => /qwen|flash-lite/.test(n)) || names[0];
+      $("aiModel").value = model;
+      localStorage.setItem("model_" + cfg.provider, model);
     }
-    localStorage.setItem("geminiModel", model);
     out.textContent = `Key OK · model: ${model}\nTest call running…`;
-    await aiOrganize("test: buy milk", key);
-    out.textContent = `✓ Connected · model: ${model}`;
+    const t0 = Date.now();
+    const items = await aiOrganize("kal college me HOD meeting, idea: try mixup negatives", { ...cfg, model });
+    out.textContent = `✓ Connected · ${model} · ${((Date.now() - t0) / 1000).toFixed(1)}s\n\nTest result:\n` +
+      items.map((i) => `• [${i.kind}] ${i.title}${i.due ? " · " + i.due : ""}`).join("\n") +
+      `\n\nOther models: ${names.slice(0, 12).join(", ")}`;
   } catch (e) {
     out.textContent = "✕ " + e.message;
   }
 }
 
-async function aiOrganize(text, key) {
-  const model = localStorage.getItem("geminiModel") || DEFAULT_MODEL;
-  const today = iso(new Date());
-  const weekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
-  const prompt = `Today is ${weekday}, ${today}. Split the rough text below into separate items.
-Each item is either a "todo" (an action to do) or a "note" (info, idea, thought).
-Rules:
-- title: short, clear, in English, max 80 chars. Fix spelling. Hinglish/Gujarati input is fine ("kal" = tomorrow, "aaj" = today).
-- body: extra details only, else "".
-- tags: 1-3 lowercase single-word tags (e.g. work, home, research, teaching, money, family).
-- due: YYYY-MM-DD only if a date/day is mentioned, else null.
-- priority: 1 high, 2 normal, 3 low.
-Return JSON only: {"items":[{"kind","title","body","tags","due","priority"}]}
+async function listGroqModels(key) {
+  const res = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: "Bearer " + key } });
+  const json = await res.json();
+  log("groq models", json);
+  if (!res.ok) throw new Error(json.error?.message || "HTTP " + res.status);
+  return (json.data || []).map((m) => m.id).filter((n) => !/whisper|guard|tts|orpheus|playai|distil|compound/i.test(n)).sort();
+}
 
-TEXT:
-${text}`;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const res = await fetch(url, {
+async function listGeminiModels(key) {
+  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
+  const json = await res.json();
+  log("gemini models", json);
+  if (!res.ok) throw new Error(json.error?.message || "HTTP " + res.status);
+  return (json.models || [])
+    .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
+    .map((m) => m.name.replace("models/", ""))
+    .filter((n) => /flash/.test(n) && !/image|tts|audio|live|exp|preview/.test(n));
+}
+
+// ============ 10. AI CALL ============
+function buildPrompt(text) {
+  const now = new Date(), tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+  const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+  return `Today is ${weekday}, ${iso(now)}. Split the rough text into separate items.
+Each item is a "todo" (an action the user must do) or a "note" (idea, info, thought).
+Rules:
+- title: short, clear, in English, max 80 chars. Translate Hinglish/Gujarati. Fix spelling. Keep names and acronyms (GTU, HOD, SSL).
+- body: extra details only, else "".
+- tags: 1-3 lowercase single-word tags (work, college, teaching, research, home, family, money, health).
+- due: YYYY-MM-DD only if a day/date is mentioned ("kal"=tomorrow, "aaj"=today, "parso"=day after tomorrow), else null.
+- priority: 1 if urgent/important, 3 if "someday/maybe", else 2.
+Output ONLY JSON: {"items":[{"kind":"todo|note","title":"","body":"","tags":[],"due":null,"priority":2}]}
+
+Example input: kal 10 baje HOD meeting, idea: mixup for SSL negatives
+Example output: {"items":[{"kind":"todo","title":"Meeting with HOD at 10 AM","body":"","tags":["college"],"due":"${iso(tmr)}","priority":2},{"kind":"note","title":"Use mixup for SSL negatives","body":"","tags":["research"],"due":null,"priority":2}]}
+
+Input: ${text}
+Output:`;
+}
+
+async function aiOrganize(text, cfg) {
+  const prompt = buildPrompt(text);
+  const raw = cfg.provider === "gemini" ? await callGemini(prompt, cfg) : await callGroq(prompt, cfg);
+  log("ai raw text", raw);
+  return parseItems(raw);
+}
+
+async function callGroq(prompt, cfg, noReasoningFlag = false) {
+  const body = {
+    model: cfg.model,
+    messages: [{ role: "system", content: "You turn messy notes into clean JSON. Reply with JSON only." }, { role: "user", content: prompt }],
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+  };
+  if (/qwen3/i.test(cfg.model) && !noReasoningFlag) body.reasoning_effort = "none"; // skip slow "thinking" mode
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
-    signal: AbortSignal.timeout(25000), // never hang silently
-    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+    signal: AbortSignal.timeout(25000),
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.key },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  log("groq raw", json);
+  if (!res.ok) {
+    const msg = json.error?.message || "HTTP " + res.status;
+    if (body.reasoning_effort && /reasoning/i.test(msg)) return callGroq(prompt, cfg, true); // model doesn't support the flag
+    throw new Error(msg);
+  }
+  return json.choices[0].message.content;
+}
+
+async function callGemini(prompt, cfg) {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent`, {
+    method: "POST",
+    signal: AbortSignal.timeout(25000),
+    headers: { "Content-Type": "application/json", "x-goog-api-key": cfg.key },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
@@ -479,9 +569,21 @@ ${text}`;
   });
   const json = await res.json();
   log("gemini raw", json);
-  if (!res.ok) throw new Error(json.error?.message || res.status);
-  const out = JSON.parse(json.candidates[0].content.parts[0].text);
-  return out.items.map(cleanItem);
+  if (!res.ok) throw new Error(json.error?.message || "HTTP " + res.status);
+  return json.candidates[0].content.parts[0].text;
+}
+
+// Accepts messy model output: strips <think> blocks and code fences, finds the JSON object
+function parseItems(raw) {
+  const clean = String(raw).replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/```(json)?/gi, "");
+  const o = clean.indexOf("{"), l = clean.indexOf("[");
+  const isArr = l >= 0 && (o < 0 || l < o); // bare list vs {"items": [...]}
+  const a = isArr ? l : o, b = clean.lastIndexOf(isArr ? "]" : "}");
+  if (a < 0 || b < a) throw new Error("Model did not return JSON");
+  const out = JSON.parse(clean.slice(a, b + 1));
+  const items = (Array.isArray(out) ? out : out.items || []).map(cleanItem);
+  if (!items.length) throw new Error("Model returned no items");
+  return items;
 }
 
 // Offline: one item per line/comma-chunk, simple keyword rules
@@ -523,7 +625,7 @@ function cleanItem(i) {
   };
 }
 
-// ============ 9. PREVIEW ============
+// ============ 11. PREVIEW ============
 function renderPreview() {
   $("previewWrap").classList.toggle("hidden", !state.preview.length);
   $("source").textContent = state.source;
@@ -563,7 +665,7 @@ async function quickNote() {
   if (await insertItems([cleanItem({ kind: "note", title: first, body: rest.join("\n") })])) { $("rough").value = ""; toast("Note saved"); }
 }
 
-// ============ 10. LIST ============
+// ============ 12. LIST ============
 function renderList() {
   const kind = state.view, q = $("search").value.toLowerCase(), f = state.filter;
   let rows = state.items.filter((i) => i.kind === kind);
@@ -639,7 +741,7 @@ function emptyHtml(ic, text) {
   return `<div class="empty"><svg class="i"><use href="#i-${ic}"/></svg><div>${text}</div></div>`;
 }
 
-// ============ 11. BACKUP ============
+// ============ 13. BACKUP ============
 function exportBackup() {
   const blob = new Blob([JSON.stringify(state.items, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
