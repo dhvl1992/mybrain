@@ -444,7 +444,11 @@ async function organize() {
   busy($("btnOrganize"), true);
   if (!cfg.key) { source = `No ${PROVIDERS[cfg.provider].label} key saved, so the basic parser was used. Add a key in Settings.`; warn = true; }
   else {
-    try { items = await aiOrganize(text, cfg); source = `Organized with ${cfg.model}. Review, then save.`; }
+    try {
+      const r = await aiOrganize(text, cfg);
+      items = r.items;
+      source = r.model === cfg.model ? `Organized with ${r.model}. Review, then save.` : `${cfg.model} hit its limit, so ${r.model} was used. Review, then save.`;
+    }
     catch (e) { log("AI failed", e); source = `AI failed (${e.message}). Used the basic parser instead.`; warn = true; }
   }
   busy($("btnOrganize"), false);
@@ -478,7 +482,7 @@ async function testAI() {
     }
     out.textContent = `Key OK · model: ${model}\nTest call running…`;
     const t0 = Date.now();
-    const items = await aiOrganize("kal college me HOD meeting, idea: try mixup negatives", { ...cfg, model });
+    const { items } = await aiOrganize("kal college me HOD meeting, idea: try mixup negatives", { ...cfg, model });
     out.textContent = `✓ Connected · ${model} · ${((Date.now() - t0) / 1000).toFixed(1)}s\n\nTest result:\n` +
       items.map((i) => `• [${i.kind}] ${i.title}${i.due ? " · " + i.due : ""}`).join("\n") +
       `\n\nOther models: ${names.slice(0, 12).join(", ")}`;
@@ -509,29 +513,36 @@ async function listGeminiModels(key) {
 // ============ 10. AI CALL ============
 function buildPrompt(text) {
   const now = new Date(), tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
-  const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
-  return `Today is ${weekday}, ${iso(now)}. Split the rough text into separate items.
-Each item is a "todo" (an action the user must do) or a "note" (idea, info, thought).
-Rules:
-- title: short, clear, in English, max 80 chars. Translate Hinglish/Gujarati. Fix spelling. Keep names and acronyms (GTU, HOD, SSL).
-- body: extra details only, else "".
-- tags: 1-3 lowercase single-word tags (work, college, teaching, research, home, family, money, health).
-- due: YYYY-MM-DD only if a day/date is mentioned ("kal"=tomorrow, "aaj"=today, "parso"=day after tomorrow), else null.
-- priority: 1 if urgent/important, 3 if "someday/maybe", else 2.
-Output ONLY JSON: {"items":[{"kind":"todo|note","title":"","body":"","tags":[],"due":null,"priority":2}]}
-
-Example input: kal 10 baje HOD meeting, idea: mixup for SSL negatives
-Example output: {"items":[{"kind":"todo","title":"Meeting with HOD at 10 AM","body":"","tags":["college"],"due":"${iso(tmr)}","priority":2},{"kind":"note","title":"Use mixup for SSL negatives","body":"","tags":["research"],"due":null,"priority":2}]}
-
-Input: ${text}
-Output:`;
+  const day = now.toLocaleDateString("en-US", { weekday: "short" });
+  return `Today ${day} ${iso(now)}. Split text into items. kind: todo (action) or note (idea/info). title: short clear English, translate Hinglish, keep acronyms. body: extra detail or "". tags: 1-3 lowercase words. due: YYYY-MM-DD if a day is mentioned (kal=tomorrow, aaj=today, parso=+2) else null. priority: 1 urgent, 2 normal, 3 someday.
+Example: "kal HOD meeting, idea: mixup for SSL" → {"items":[{"kind":"todo","title":"Meeting with HOD","body":"","tags":["college"],"due":"${iso(tmr)}","priority":2},{"kind":"note","title":"Use mixup for SSL","body":"","tags":["research"],"due":null,"priority":2}]}
+JSON only.
+Text: ${text}`;
 }
 
+// Returns { items, model }. If a Groq model is rate-limited (429), tries the next model:
+// each Groq model has its own limit bucket. Then Gemini if a key exists.
 async function aiOrganize(text, cfg) {
   const prompt = buildPrompt(text);
-  const raw = cfg.provider === "gemini" ? await callGemini(prompt, cfg) : await callGroq(prompt, cfg);
-  log("ai raw text", raw);
-  return parseItems(raw);
+  const chain = [{ ...cfg }];
+  if (cfg.provider === "groq") {
+    ["openai/gpt-oss-20b", "openai/gpt-oss-120b"].filter((m) => m !== cfg.model).forEach((m) => chain.push({ ...cfg, model: m }));
+    const g = aiCfg("gemini");
+    if (g.key) chain.push(g);
+  }
+  let lastErr;
+  for (const c of chain) {
+    try {
+      const raw = c.provider === "gemini" ? await callGemini(prompt, c) : await callGroq(prompt, c);
+      log("ai raw text", c.model, raw);
+      return { items: parseItems(raw), model: c.model };
+    } catch (e) {
+      lastErr = e;
+      if (!e.rateLimited) throw e; // only fall through on rate limits
+      log("rate limited, trying next model", c.model);
+    }
+  }
+  throw new Error("All models are busy (rate limit). Wait 1 minute. " + lastErr.message);
 }
 
 async function callGroq(prompt, cfg, noReasoningFlag = false) {
@@ -554,7 +565,7 @@ async function callGroq(prompt, cfg, noReasoningFlag = false) {
   if (!res.ok) {
     const msg = json.error?.message || "HTTP " + res.status;
     if (body.reasoning_effort && /reasoning/i.test(msg)) return callGroq(prompt, cfg, true); // model doesn't support the flag
-    throw new Error(msg);
+    throw Object.assign(new Error(msg), { rateLimited: res.status === 429 });
   }
   return json.choices[0].message.content;
 }
@@ -571,7 +582,7 @@ async function callGemini(prompt, cfg) {
   });
   const json = await res.json();
   log("gemini raw", json);
-  if (!res.ok) throw new Error(json.error?.message || "HTTP " + res.status);
+  if (!res.ok) throw Object.assign(new Error(json.error?.message || "HTTP " + res.status), { rateLimited: res.status === 429 });
   return json.candidates[0].content.parts[0].text;
 }
 
