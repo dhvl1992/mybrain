@@ -463,8 +463,9 @@ async function testAI() {
   const cfg = aiCfg(state.prov);
   if (!cfg.key) return (out.textContent = "Paste your key first.");
   out.textContent = "Checking key…";
+  let names = [];
   try {
-    const names = cfg.provider === "groq" ? await listGroqModels(cfg.key) : await listGeminiModels(cfg.key);
+    names = cfg.provider === "groq" ? await listGroqModels(cfg.key) : await listGeminiModels(cfg.key);
     if (!names.length) throw new Error("Key works, but no suitable text model found.");
     let model = cfg.model;
     if (!names.includes(model)) {
@@ -482,7 +483,7 @@ async function testAI() {
       items.map((i) => `• [${i.kind}] ${i.title}${i.due ? " · " + i.due : ""}`).join("\n") +
       `\n\nOther models: ${names.slice(0, 12).join(", ")}`;
   } catch (e) {
-    out.textContent = "✕ " + e.message;
+    out.textContent = "✕ " + e.message + (names.length ? `\n\nModels on your account: ${names.join(", ")}` : "");
   }
 }
 
@@ -540,7 +541,8 @@ async function callGroq(prompt, cfg, noReasoningFlag = false) {
     temperature: 0.2,
     response_format: { type: "json_object" },
   };
-  if (/qwen3/i.test(cfg.model) && !noReasoningFlag) body.reasoning_effort = "none"; // skip slow "thinking" mode
+  if (!noReasoningFlag && /qwen3/i.test(cfg.model)) body.reasoning_effort = "none"; // skip slow "thinking" mode
+  if (!noReasoningFlag && /gpt-oss/i.test(cfg.model)) body.reasoning_effort = "low";
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     signal: AbortSignal.timeout(25000),
@@ -573,17 +575,38 @@ async function callGemini(prompt, cfg) {
   return json.candidates[0].content.parts[0].text;
 }
 
-// Accepts messy model output: strips <think> blocks and code fences, finds the JSON object
+// Accepts messy model output: strips <think> blocks and code fences, finds the JSON,
+// then finds the list of items whatever key the model used ("items", "tasks", "result"...).
 function parseItems(raw) {
-  const clean = String(raw).replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/```(json)?/gi, "");
+  const snippet = String(raw || "").slice(0, 300) || "(empty reply)";
+  const clean = String(raw || "").replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/```(json)?/gi, "");
   const o = clean.indexOf("{"), l = clean.indexOf("[");
-  const isArr = l >= 0 && (o < 0 || l < o); // bare list vs {"items": [...]}
+  const isArr = l >= 0 && (o < 0 || l < o); // bare list vs object
   const a = isArr ? l : o, b = clean.lastIndexOf(isArr ? "]" : "}");
-  if (a < 0 || b < a) throw new Error("Model did not return JSON");
-  const out = JSON.parse(clean.slice(a, b + 1));
-  const items = (Array.isArray(out) ? out : out.items || []).map(cleanItem);
-  if (!items.length) throw new Error("Model returned no items");
+  if (a < 0 || b < a) throw new Error("Model did not return JSON.\nReply was: " + snippet);
+  let out;
+  try { out = JSON.parse(clean.slice(a, b + 1)); } catch (e) { throw new Error("Bad JSON from model.\nReply was: " + snippet); }
+  const items = findItemList(out).map(cleanItem).filter((i) => i.title !== "(untitled)");
+  if (!items.length) throw new Error("Model returned no items.\nReply was: " + snippet);
   return items;
+}
+
+function findItemList(x) {
+  if (Array.isArray(x)) {
+    if (x.some((v) => v && typeof v === "object" && ("title" in v || "kind" in v))) return x;
+    return x.flatMap((v) => (v && typeof v === "object" ? findItemList(v) : []));
+  }
+  if (x && typeof x === "object") {
+    if ("title" in x) return [x]; // a single item
+    const lists = Object.entries(x).map(([k, v]) => {
+      const found = findItemList(v);
+      // {"todos":[...], "notes":[...]} → use the key as the kind when missing
+      const kind = /todo|task/i.test(k) ? "todo" : /note|idea/i.test(k) ? "note" : null;
+      return found.map((it) => (kind && !it.kind ? { ...it, kind } : it));
+    });
+    return lists.flat();
+  }
+  return [];
 }
 
 // Offline: one item per line/comma-chunk, simple keyword rules
