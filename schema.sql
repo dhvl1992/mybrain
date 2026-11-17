@@ -30,3 +30,5 @@ create policy "own rows" on items
   for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- Lists + shopping store type: see migrations/002-lists.sql (run it after this file)

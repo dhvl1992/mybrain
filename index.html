@@ -126,6 +126,30 @@
            background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 10px; font-size: 14px; font-weight: 500;
            box-shadow: 0 6px 20px rgba(0,0,0,.15); z-index: 20; max-width: 90vw; }
 
+  /* ---------- List chips ---------- */
+  .lists { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 10px; margin: 0 -16px; padding-left: 16px; padding-right: 16px; scrollbar-width: none; }
+  .lists::-webkit-scrollbar { display: none; }
+  .lists button { flex: none; height: 34px; padding: 0 14px; border-radius: 17px; border: 1px solid var(--border); background: var(--surface);
+                  font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .lists button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .lists .n { opacity: .6; margin-left: 4px; font-weight: 500; }
+  select.chip-select { height: 22px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface);
+                       font-size: 12px; color: var(--text); }
+  .item-main[data-edit] { cursor: pointer; }
+
+  /* ---------- Edit sheet ---------- */
+  .sheet { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 30; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet-card { background: var(--bg); width: 100%; max-width: 640px; max-height: 92vh; overflow-y: auto; border-radius: 18px 18px 0 0;
+                padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 17px; font-weight: 700; }
+  .sheet .field + .field { margin-top: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .grid2 label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .grid2 .field { padding: 10px 12px; height: 44px; }
+  .list-row { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-top: 1px solid var(--border); }
+  .list-row:first-child { border-top: 0; }
+  .list-row .field { height: 40px; padding: 8px 12px; }
+
   /* ---------- Login ---------- */
   .login { min-height: 80vh; display: flex; flex-direction: column; justify-content: center; max-width: 380px; margin: 0 auto; }
   .login img { width: 56px; height: 56px; border-radius: 14px; margin-bottom: 18px; }
@@ -191,6 +215,7 @@
 
   <!-- LIST -->
   <section id="viewList" class="hidden">
+    <div class="lists" id="listChips"></div>
     <div class="search"><svg class="i"><use href="#i-search"/></svg><input id="search" class="field" placeholder="Search"></div>
     <div class="seg" id="seg">
       <button data-f="open" class="on">Open</button>
@@ -220,6 +245,13 @@
       <div id="aiTestOut" class="notice mono hidden"></div>
     </div>
 
+    <div class="label" id="listsLabel">Lists</div>
+    <div class="group" id="listSettings"></div>
+    <div class="btn-row">
+      <input id="newListName" class="field" placeholder="New list name" style="height:44px">
+      <button id="btnAddList" class="btn btn-secondary" style="flex:0 0 auto">Add</button>
+    </div>
+
     <div class="label">Data</div>
     <div class="group" style="padding:14px">
       <div class="sub" style="margin:0 0 10px">Download everything as a JSON file. Keep it in Google Drive, not GitHub.</div>
@@ -242,6 +274,26 @@
   </div>
 </nav>
 
+<div id="sheet" class="sheet hidden">
+  <div class="sheet-card">
+    <div class="sheet-head"><span>Edit</span><button id="sheetClose" class="icon-btn" aria-label="Close">✕</button></div>
+    <input id="eTitle" class="field" placeholder="Title">
+    <textarea id="eBody" class="field" rows="4" placeholder="Details" style="min-height:90px"></textarea>
+    <div class="grid2">
+      <label>Type<select id="eKind" class="field"><option value="todo">Task</option><option value="note">Note</option></select></label>
+      <label>List<select id="eList" class="field"></select></label>
+      <label>Due date<input id="eDue" type="date" class="field"></label>
+      <label>Priority<select id="ePrio" class="field"><option value="1">High</option><option value="2">Normal</option><option value="3">Low</option></select></label>
+      <label id="eStoreWrap">Store<select id="eStore" class="field"></select></label>
+      <label>Tags<input id="eTags" class="field" placeholder="comma, separated"></label>
+    </div>
+    <div class="btn-row">
+      <button id="eSave" class="btn btn-primary">Save</button>
+      <button id="eCancel" class="btn btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="hidden"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -257,9 +309,17 @@ const PROVIDERS = {
 };
 const DEBUG = true; // set false to silence console logs
 
+// Lists created automatically for a new account
+const DEFAULT_LISTS = ["Inbox", "Office", "Home", "Shopping", "Research"];
+// Store types for the Shopping list (key → label shown in app)
+const STORES = {
+  grocery: "Kirana / Grocery", vegetables: "Vegetables & fruit", medical: "Medical",
+  stationery: "Stationery", hardware: "Hardware / Electrical", online: "Online", other: "Other",
+};
+
 // ============ 2. STATE ============
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const state = { prov: "groq", user: null, items: [], view: "capture", preview: [], source: "", filter: "open", openNote: null };
+const state = { prov: "groq", user: null, items: [], lists: [], list: "all", view: "capture", preview: [], source: "", filter: "open", editing: null };
 const $ = (id) => document.getElementById(id);
 const log = (...a) => DEBUG && console.log("[MyBrain]", ...a);
 const icon = (name) => `<svg class="i"><use href="#i-${name}"/></svg>`;
@@ -301,6 +361,13 @@ function wireEvents() {
     renderList();
   }));
   document.querySelectorAll("#nav button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
+  $("btnAddList").onclick = addList;
+  $("newListName").onkeydown = (e) => e.key === "Enter" && addList();
+  $("sheetClose").onclick = closeEditor;
+  $("eCancel").onclick = closeEditor;
+  $("eSave").onclick = saveEditor;
+  $("sheet").onclick = (e) => e.target === $("sheet") && closeEditor();
+  $("eList").onchange = $("eKind").onchange = toggleStoreField;
 }
 
 // ============ 5. VIEWS ============
@@ -321,6 +388,7 @@ function show(view) {
   $("search").value = "";
   updateHeader();
   if (view === "todo" || view === "note") renderList();
+  if (view === "settings") renderListSettings();
 }
 
 function updateHeader() {
@@ -329,7 +397,14 @@ function updateHeader() {
   const dueNow = open.filter((i) => i.due && i.due <= today).length;
   const notes = state.items.filter((i) => i.kind === "note").length;
   const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
-  const sub = { capture: dateStr, todo: `${open.length} open · ${dueNow} due today or overdue`, note: `${notes} notes`, settings: "" };
+  const where = state.list === "all" ? "All lists" : listNameById(state.list);
+  const inList = (i) => state.list === "all" || effListId(i) === state.list;
+  const sub = {
+    capture: dateStr,
+    todo: `${where} · ${open.filter(inList).length} open`,
+    note: `${where} · ${state.items.filter((i) => i.kind === "note" && inList(i)).length} notes`,
+    settings: "",
+  };
   $("subtitle").textContent = sub[state.view] || "";
   $("badge").textContent = dueNow;
   $("badge").classList.toggle("hidden", !dueNow);
@@ -366,10 +441,73 @@ async function auth(mode) {
 
 // ============ 7. DATA (Supabase) ============
 async function loadItems() {
+  await loadLists();
   const { data, error } = await db.from("items").select("*").order("created_at", { ascending: false });
   log("loadItems", data?.length, error);
   if (error) return toast("Could not load: " + error.message, 4000);
   state.items = data;
+}
+
+// ---- Lists ----
+async function loadLists() {
+  let { data, error } = await db.from("lists").select("*").order("position");
+  log("loadLists", data, error);
+  if (error) { toast("Lists not set up yet — run migrations/002-lists.sql in Supabase", 6000); state.lists = []; return; }
+  if (!data.length) { // first run for this account: create defaults
+    const res = await db.from("lists").insert(DEFAULT_LISTS.map((name, position) => ({ name, position }))).select();
+    data = (res.data || []).sort((a, b) => a.position - b.position);
+  }
+  state.lists = data;
+}
+const inboxId = () => (state.lists.find((l) => /^inbox$/i.test(l.name)) || state.lists[0] || {}).id || null;
+const effListId = (i) => i.list_id || inboxId(); // items without a list live in Inbox
+const listNameById = (id) => (state.lists.find((l) => l.id === id) || {}).name || "Inbox";
+const listIdByName = (name) => (state.lists.find((l) => l.name.toLowerCase() === String(name || "").trim().toLowerCase()) || {}).id || inboxId();
+const isShopping = (name) => /^shopping$/i.test(String(name || "").trim());
+
+async function addList() {
+  const name = $("newListName").value.trim();
+  if (!name) return toast("Type a list name");
+  if (state.lists.some((l) => l.name.toLowerCase() === name.toLowerCase())) return toast("That list already exists");
+  const { data, error } = await db.from("lists").insert({ name, position: state.lists.length }).select();
+  if (error) return toast("Could not add: " + error.message, 4000);
+  state.lists.push(data[0]);
+  $("newListName").value = "";
+  renderListSettings(); toast(`Added "${name}"`);
+}
+
+async function renameList(id, name) {
+  name = name.trim();
+  const l = state.lists.find((x) => x.id === id);
+  if (!name || name === l.name) return renderListSettings();
+  const { error } = await db.from("lists").update({ name }).eq("id", id);
+  if (error) { toast("Could not rename: " + error.message, 4000); return renderListSettings(); }
+  l.name = name; toast("Renamed");
+}
+
+async function deleteList(id, btn) {
+  if (id === inboxId()) return toast("Inbox can't be deleted");
+  if (confirmDelete.armed !== "list" + id) {
+    confirmDelete.armed = "list" + id; btn.classList.add("armed");
+    return toast("Tap again — its items move to Inbox");
+  }
+  confirmDelete.armed = null;
+  const { error } = await db.from("lists").delete().eq("id", id);
+  if (error) return toast("Could not delete: " + error.message, 4000);
+  state.lists = state.lists.filter((l) => l.id !== id);
+  state.items.forEach((i) => { if (i.list_id === id) i.list_id = null; }); // DB does the same (on delete set null)
+  if (state.list === id) state.list = "all";
+  renderListSettings(); toast("List deleted");
+}
+
+function renderListSettings() {
+  $("listSettings").innerHTML = state.lists.map((l) => `
+    <div class="list-row">
+      <input class="field" value="${esc(l.name)}" data-rename="${l.id}" ${l.id === inboxId() ? "disabled" : ""}>
+      ${l.id === inboxId() ? "" : `<button class="del" data-dellist="${l.id}" aria-label="Delete list">${icon("trash")}</button>`}
+    </div>`).join("") || `<div class="list-row sub">Run migrations/002-lists.sql in Supabase to enable lists.</div>`;
+  $("listSettings").querySelectorAll("[data-rename]").forEach((el) => (el.onchange = () => renameList(el.dataset.rename, el.value)));
+  $("listSettings").querySelectorAll("[data-dellist]").forEach((b) => (b.onclick = () => deleteList(b.dataset.dellist, b)));
 }
 
 async function insertItems(rows) {
@@ -514,8 +652,9 @@ async function listGeminiModels(key) {
 function buildPrompt(text) {
   const now = new Date(), tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
   const day = now.toLocaleDateString("en-US", { weekday: "short" });
-  return `Today ${day} ${iso(now)}. Split text into items. kind: todo (action) or note (idea/info). title: short clear English, translate Hinglish, keep acronyms. body: extra detail or "". tags: 1-3 lowercase words. due: YYYY-MM-DD if a day is mentioned (kal=tomorrow, aaj=today, parso=+2) else null. priority: 1 urgent, 2 normal, 3 someday.
-Example: "kal HOD meeting, idea: mixup for SSL" → {"items":[{"kind":"todo","title":"Meeting with HOD","body":"","tags":["college"],"due":"${iso(tmr)}","priority":2},{"kind":"note","title":"Use mixup for SSL","body":"","tags":["research"],"due":null,"priority":2}]}
+  const lists = (state.lists.length ? state.lists.map((l) => l.name) : DEFAULT_LISTS).join("|");
+  return `Today ${day} ${iso(now)}. Split text into items. kind: todo (action) or note (idea/info). title: short clear English, translate Hinglish, keep acronyms. body: extra detail or "". tags: 1-3 lowercase words. due: YYYY-MM-DD if a day is mentioned (kal=tomorrow, aaj=today, parso=+2) else null. priority: 1 urgent, 2 normal, 3 someday. list: best fit from ${lists} (Inbox if unsure; things to buy → Shopping). store: only for Shopping, one of ${Object.keys(STORES).join("|")}, else null.
+Example: "kal HOD meeting, idea: mixup for SSL, paracetamol lena" → {"items":[{"kind":"todo","title":"Meeting with HOD","body":"","tags":["college"],"due":"${iso(tmr)}","priority":2,"list":"Office","store":null},{"kind":"note","title":"Use mixup for SSL","body":"","tags":["research"],"due":null,"priority":2,"list":"Research","store":null},{"kind":"todo","title":"Buy paracetamol","body":"","tags":["health"],"due":null,"priority":2,"list":"Shopping","store":"medical"}]}
 JSON only.
 Text: ${text}`;
 }
@@ -633,6 +772,7 @@ function offlineOrganize(text) {
       due: guessDate(c),
       tags: [],
       priority: /\b(urgent|asap|important)\b/i.test(c) ? 1 : 2,
+      list: /\b(buy|lena|lana|kharid\w*|order)\b/i.test(c) ? "Shopping" : "Inbox",
     });
   });
 }
@@ -656,7 +796,23 @@ function cleanItem(i) {
     tags: Array.isArray(i.tags) ? i.tags.slice(0, 5).map(String) : [],
     due: /^\d{4}-\d{2}-\d{2}$/.test(i.due) ? i.due : null,
     priority: [1, 2, 3].includes(Number(i.priority)) ? Number(i.priority) : 2,
+    list: canonListName(i.list), // list NAME here; turned into list_id when saving
+    store: STORES[String(i.store || "").toLowerCase()] ? String(i.store).toLowerCase() : null,
   };
+}
+
+// "shopping " → "Shopping"; unknown names → "Inbox"
+function canonListName(name) {
+  const names = state.lists.length ? state.lists.map((l) => l.name) : DEFAULT_LISTS;
+  const n = String(name || "").trim().toLowerCase();
+  return names.find((x) => x.toLowerCase() === n) || names.find((x) => /^inbox$/i.test(x)) || names[0];
+}
+
+// Preview item (list name) → database row (list_id)
+function toRow({ keep, list, store, ...r }) {
+  if (!state.lists.length) return r; // migration not run yet: save without list fields
+  const shop = isShopping(list) && r.kind === "todo";
+  return { ...r, list_id: listIdByName(list), store: shop ? store || "other" : null };
 }
 
 // ============ 11. PREVIEW ============
@@ -671,18 +827,22 @@ function renderPreview() {
         ${p.body ? `<div class="item-body">${esc(p.body)}</div>` : ""}
         <div class="meta">
           <span class="chip kind" data-flip="${n}">${icon(p.kind === "todo" ? "check" : "note")}${p.kind === "todo" ? "Task" : "Note"}</span>
+          <select class="chip-select" data-plist="${n}">${listOptions(p.list, true)}</select>
+          ${isShopping(p.list) && p.kind === "todo" ? `<select class="chip-select" data-pstore="${n}">${storeOptions(p.store || "other")}</select>` : ""}
           ${metaChips(p)}
         </div>
       </div>
     </div>`).join("");
   $("preview").querySelectorAll("[data-n]").forEach((c) => (c.onchange = () => (state.preview[c.dataset.n].keep = c.checked)));
+  $("preview").querySelectorAll("[data-plist]").forEach((el) => (el.onchange = () => { state.preview[el.dataset.plist].list = el.value; renderPreview(); }));
+  $("preview").querySelectorAll("[data-pstore]").forEach((el) => (el.onchange = () => (state.preview[el.dataset.pstore].store = el.value)));
   $("preview").querySelectorAll("[data-flip]").forEach((b) => (b.onclick = () => {
     const p = state.preview[b.dataset.flip]; p.kind = p.kind === "todo" ? "note" : "todo"; renderPreview();
   }));
 }
 
 async function savePreview() {
-  const rows = state.preview.filter((p) => p.keep).map(({ keep, ...r }) => r);
+  const rows = state.preview.filter((p) => p.keep).map(toRow);
   if (!rows.length) return toast("Nothing selected");
   busy($("btnSavePreview"), true);
   const ok = await insertItems(rows);
@@ -696,49 +856,123 @@ async function quickNote() {
   const text = $("rough").value.trim();
   if (!text) return toast("Write something first");
   const [first, ...rest] = text.split("\n");
-  if (await insertItems([cleanItem({ kind: "note", title: first, body: rest.join("\n") })])) { $("rough").value = ""; toast("Note saved"); }
+  if (await insertItems([toRow(cleanItem({ kind: "note", title: first, body: rest.join("\n") }))])) { $("rough").value = ""; toast("Note saved"); }
 }
 
 // ============ 12. LIST ============
+function renderListChips() {
+  const kind = state.view;
+  const count = (id) => state.items.filter((i) => i.kind === kind && !(kind === "todo" && i.done) && (id === "all" || effListId(i) === id)).length;
+  const chips = [{ id: "all", name: "All" }, ...state.lists];
+  $("listChips").innerHTML = chips.map((l) =>
+    `<button data-list="${l.id}" class="${state.list === l.id ? "on" : ""}">${esc(l.name)}<span class="n">${count(l.id)}</span></button>`
+  ).join("") + `<button data-list="__new">+ List</button>`;
+  $("listChips").querySelectorAll("[data-list]").forEach((b) => (b.onclick = () => {
+    if (b.dataset.list === "__new") { show("settings"); $("newListName").focus(); return; }
+    state.list = b.dataset.list; updateHeader(); renderList();
+  }));
+  $("listChips").classList.toggle("hidden", !state.lists.length);
+}
+
 function renderList() {
+  if (state.view !== "todo" && state.view !== "note") return;
+  renderListChips();
   const kind = state.view, q = $("search").value.toLowerCase(), f = state.filter;
-  let rows = state.items.filter((i) => i.kind === kind);
+  const shopView = state.list !== "all" && isShopping(listNameById(state.list));
+  let rows = state.items.filter((i) => i.kind === kind && (state.list === "all" || effListId(i) === state.list));
   if (q) rows = rows.filter((i) => (i.title + " " + i.body + " " + (i.tags || []).join(" ")).toLowerCase().includes(q));
 
   if (kind === "note") {
-    $("list").innerHTML = rows.length ? `<div class="group">${rows.map(itemHtml).join("")}</div>` : emptyHtml("note", q ? "No matching notes" : "No notes yet");
+    $("list").innerHTML = rows.length ? `<div class="group">${rows.map(itemHtml).join("")}</div>` : emptyHtml("note", q ? "No matching notes" : "No notes here yet");
   } else {
     if (f === "open") rows = rows.filter((i) => !i.done);
     if (f === "done") rows = rows.filter((i) => i.done);
     rows.sort((a, b) => (a.done - b.done) || String(a.due || "9999").localeCompare(String(b.due || "9999")) || (a.priority - b.priority));
     const today = iso(new Date());
-    const groups = [
-      ["Overdue", rows.filter((i) => !i.done && i.due && i.due < today)],
-      ["Today", rows.filter((i) => !i.done && i.due === today)],
-      ["Upcoming", rows.filter((i) => !i.done && i.due && i.due > today)],
-      ["No date", rows.filter((i) => !i.done && !i.due)],
-      ["Completed", rows.filter((i) => i.done)],
-    ].filter(([, g]) => g.length);
-    $("list").innerHTML = groups.length
-      ? groups.map(([name, g]) => `<div class="label">${name} · ${g.length}</div><div class="group">${g.map(itemHtml).join("")}</div>`).join("")
+    const open = rows.filter((i) => !i.done);
+    const groups = shopView
+      ? [ // Shopping: group by where to buy
+          ...Object.entries(STORES).map(([k, label]) => [label, open.filter((i) => (i.store || "other") === k)]),
+          ["Bought", rows.filter((i) => i.done)],
+        ]
+      : [
+          ["Overdue", open.filter((i) => i.due && i.due < today)],
+          ["Today", open.filter((i) => i.due === today)],
+          ["Upcoming", open.filter((i) => i.due && i.due > today)],
+          ["No date", open.filter((i) => !i.due)],
+          ["Completed", rows.filter((i) => i.done)],
+        ];
+    const shown = groups.filter(([, g]) => g.length);
+    $("list").innerHTML = shown.length
+      ? shown.map(([name, g]) => `<div class="label">${name} · ${g.length}</div><div class="group">${g.map(itemHtml).join("")}</div>`).join("")
       : emptyHtml("check", q ? "No matching tasks" : f === "done" ? "Nothing completed yet" : "All clear");
   }
   $("list").querySelectorAll("[data-done]").forEach((c) => (c.onchange = () => updateItem(c.dataset.done, { done: c.checked })));
   $("list").querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteItem(b.dataset.del, b)));
-  $("list").querySelectorAll("[data-open]").forEach((el) => (el.onclick = () => el.closest(".note").classList.toggle("open")));
+  $("list").querySelectorAll("[data-edit]").forEach((el) => (el.onclick = () => openEditor(el.dataset.edit)));
 }
 
 function itemHtml(i) {
   const isTodo = i.kind === "todo";
+  const listChip = state.list === "all" && state.lists.length ? `<span class="chip">${esc(listNameById(effListId(i)))}</span>` : "";
   return `<div class="item ${isTodo ? "" : "note"} ${i.done ? "done" : ""}">
     ${isTodo ? `<input type="checkbox" class="check prio-${i.priority}" data-done="${i.id}" ${i.done ? "checked" : ""} aria-label="Done">` : ""}
-    <div class="item-main" ${isTodo ? "" : "data-open"}>
+    <div class="item-main" data-edit="${i.id}">
       <div class="item-title">${esc(i.title)}</div>
       ${i.body ? `<div class="item-body">${esc(i.body)}</div>` : ""}
-      <div class="meta">${metaChips(i)}${isTodo ? "" : `<span>${relDate(i.created_at)}</span>`}</div>
+      <div class="meta">${listChip}${metaChips(i)}${isTodo ? "" : `<span>${relDate(i.created_at)}</span>`}</div>
     </div>
     <button class="del" data-del="${i.id}" aria-label="Delete">${icon("trash")}</button>
   </div>`;
+}
+
+// ---- Edit sheet ----
+const listOptions = (sel, byName) => (state.lists.length ? state.lists : DEFAULT_LISTS.map((name) => ({ id: name, name })))
+  .map((l) => { const v = byName ? l.name : l.id; return `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(l.name)}</option>`; }).join("");
+const storeOptions = (sel) => Object.entries(STORES).map(([k, label]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${label}</option>`).join("");
+
+function openEditor(id) {
+  const i = state.items.find((x) => x.id === id);
+  if (!i) return;
+  state.editing = id;
+  $("eTitle").value = i.title;
+  $("eBody").value = i.body || "";
+  $("eKind").value = i.kind;
+  $("eList").innerHTML = listOptions(effListId(i), false);
+  $("eDue").value = i.due || "";
+  $("ePrio").value = String(i.priority || 2);
+  $("eStore").innerHTML = storeOptions(i.store || "other");
+  $("eTags").value = (i.tags || []).join(", ");
+  toggleStoreField();
+  $("sheet").classList.remove("hidden");
+}
+
+function toggleStoreField() {
+  const shop = isShopping(listNameById($("eList").value)) && $("eKind").value === "todo";
+  $("eStoreWrap").classList.toggle("hidden", !shop);
+}
+
+function closeEditor() { state.editing = null; $("sheet").classList.add("hidden"); }
+
+async function saveEditor() {
+  const title = $("eTitle").value.trim();
+  if (!title) return toast("Title can't be empty");
+  const listId = $("eList").value, kind = $("eKind").value;
+  const patch = {
+    title, kind,
+    body: $("eBody").value.trim(),
+    list_id: state.lists.length ? listId : null,
+    due: $("eDue").value || null,
+    priority: Number($("ePrio").value),
+    store: isShopping(listNameById(listId)) && kind === "todo" ? $("eStore").value : null,
+    tags: $("eTags").value.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean).slice(0, 5),
+  };
+  if (!state.lists.length) { delete patch.list_id; delete patch.store; } // migration not run yet
+  const id = state.editing;
+  busy($("eSave"), true);
+  await updateItem(id, patch);
+  busy($("eSave"), false);
+  closeEditor(); toast("Saved");
 }
 
 function metaChips(i) {
@@ -777,7 +1011,7 @@ function emptyHtml(ic, text) {
 
 // ============ 13. BACKUP ============
 function exportBackup() {
-  const blob = new Blob([JSON.stringify(state.items, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), lists: state.lists, items: state.items }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `mybrain-backup-${iso(new Date())}.json`;
