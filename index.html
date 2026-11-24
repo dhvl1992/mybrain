@@ -172,6 +172,7 @@
   <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></symbol>
   <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4M4 4h13l-2 4 2 4H4"/></symbol>
   <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.3h6c0-1 .4-1.8 1-2.3A7 7 0 0 0 12 2z"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
 </svg>
 
@@ -222,6 +223,13 @@
       <button data-f="done">Completed</button>
       <button data-f="all">All</button>
     </div>
+    <div class="seg hidden" id="ideaSeg">
+      <button data-s="active" class="on">Active</button>
+      <button data-s="new">New</button>
+      <button data-s="exploring">Exploring</button>
+      <button data-s="doing">Doing</button>
+      <button data-s="parked">Parked</button>
+    </div>
     <div id="list"></div>
   </section>
 
@@ -271,6 +279,7 @@
     <button data-view="capture" class="on"><svg class="i"><use href="#i-inbox"/></svg>Capture</button>
     <button data-view="todo"><svg class="i"><use href="#i-check"/></svg>Tasks<span class="badge hidden" id="badge"></span></button>
     <button data-view="note"><svg class="i"><use href="#i-note"/></svg>Notes</button>
+    <button data-view="idea"><svg class="i"><use href="#i-bulb"/></svg>Ideas</button>
   </div>
 </nav>
 
@@ -280,10 +289,13 @@
     <input id="eTitle" class="field" placeholder="Title">
     <textarea id="eBody" class="field" rows="4" placeholder="Details" style="min-height:90px"></textarea>
     <div class="grid2">
-      <label>Type<select id="eKind" class="field"><option value="todo">Task</option><option value="note">Note</option></select></label>
+      <label>Type<select id="eKind" class="field"><option value="todo">Task</option><option value="note">Note</option><option value="idea">Idea</option></select></label>
       <label>List<select id="eList" class="field"></select></label>
-      <label>Due date<input id="eDue" type="date" class="field"></label>
-      <label>Priority<select id="ePrio" class="field"><option value="1">High</option><option value="2">Normal</option><option value="3">Low</option></select></label>
+      <label class="not-idea">Due date<input id="eDue" type="date" class="field"></label>
+      <label class="not-idea">Priority<select id="ePrio" class="field"><option value="1">High</option><option value="2">Normal</option><option value="3">Low</option></select></label>
+      <label class="only-idea">Status<select id="eStatus" class="field"><option value="new">New</option><option value="exploring">Exploring</option><option value="doing">Doing</option><option value="parked">Parked</option></select></label>
+      <label class="only-idea">Impact<select id="eImpact" class="field"><option value="">Not rated</option><option value="3">High</option><option value="2">Medium</option><option value="1">Low</option></select></label>
+      <label class="only-idea">Effort<select id="eEffort" class="field"><option value="">Not rated</option><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option></select></label>
       <label id="eStoreWrap">Store<select id="eStore" class="field"></select></label>
       <label>Tags<input id="eTags" class="field" placeholder="comma, separated"></label>
     </div>
@@ -319,11 +331,19 @@ const STORES = {
 
 // ============ 2. STATE ============
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const state = { prov: "groq", user: null, items: [], lists: [], list: "all", view: "capture", preview: [], source: "", filter: "open", editing: null };
+// Idea triage
+const IDEA_STATUS = { new: "New", exploring: "Exploring", doing: "Doing", parked: "Parked" };
+const LEVEL = { 1: "Low", 2: "Med", 3: "High" };
+const KINDS = ["todo", "note", "idea"];
+const KIND_LABEL = { todo: "Task", note: "Note", idea: "Idea" };
+const KIND_ICON = { todo: "check", note: "note", idea: "bulb" };
+const isList = (v) => v === "todo" || v === "note" || v === "idea";
+
+const state = { prov: "groq", user: null, items: [], lists: [], list: "all", view: "capture", preview: [], source: "", filter: "open", ideaFilter: "active", editing: null };
 const $ = (id) => document.getElementById(id);
 const log = (...a) => DEBUG && console.log("[MyBrain]", ...a);
 const icon = (name) => `<svg class="i"><use href="#i-${name}"/></svg>`;
-const TITLES = { capture: "Capture", todo: "Tasks", note: "Notes", settings: "Settings" };
+const TITLES = { capture: "Capture", todo: "Tasks", note: "Notes", idea: "Ideas", settings: "Settings" };
 
 // ============ 3. BOOT ============
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch((e) => log("sw failed", e));
@@ -360,6 +380,11 @@ function wireEvents() {
     document.querySelectorAll("#seg button").forEach((x) => x.classList.toggle("on", x === b));
     renderList();
   }));
+  document.querySelectorAll("#ideaSeg button").forEach((b) => (b.onclick = () => {
+    state.ideaFilter = b.dataset.s;
+    document.querySelectorAll("#ideaSeg button").forEach((x) => x.classList.toggle("on", x === b));
+    renderList();
+  }));
   document.querySelectorAll("#nav button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
   $("btnAddList").onclick = addList;
   $("newListName").onkeydown = (e) => e.key === "Enter" && addList();
@@ -378,16 +403,17 @@ function show(view) {
   $("nav").classList.toggle("hidden", !loggedIn);
   $("viewLogin").classList.toggle("hidden", view !== "login");
   $("viewCapture").classList.toggle("hidden", view !== "capture");
-  $("viewList").classList.toggle("hidden", view !== "todo" && view !== "note");
+  $("viewList").classList.toggle("hidden", !isList(view));
   $("viewSettings").classList.toggle("hidden", view !== "settings");
   $("seg").classList.toggle("hidden", view !== "todo");
+  $("ideaSeg").classList.toggle("hidden", view !== "idea");
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", b.dataset.view === view));
   if (!loggedIn) return;
   $("title").textContent = TITLES[view];
   $("whoami").textContent = "Signed in as " + (state.user?.email || "");
   $("search").value = "";
   updateHeader();
-  if (view === "todo" || view === "note") renderList();
+  if (isList(view)) renderList();
   if (view === "settings") renderListSettings();
 }
 
@@ -403,6 +429,7 @@ function updateHeader() {
     capture: dateStr,
     todo: `${where} · ${open.filter(inList).length} open`,
     note: `${where} · ${state.items.filter((i) => i.kind === "note" && inList(i)).length} notes`,
+    idea: `${where} · ${state.items.filter((i) => i.kind === "idea" && inList(i) && i.status !== "parked").length} active ideas`,
     settings: "",
   };
   $("subtitle").textContent = sub[state.view] || "";
@@ -513,7 +540,7 @@ function renderListSettings() {
 async function insertItems(rows) {
   const { data, error } = await db.from("items").insert(rows).select();
   log("insertItems", rows, data, error);
-  if (error) { toast("Could not save: " + error.message, 4000); return false; }
+  if (error) { toast(needsIdeasMigration(error) || "Could not save: " + error.message, 6000); return false; }
   state.items = [...data, ...state.items];
   updateHeader();
   return true;
@@ -523,11 +550,18 @@ async function updateItem(id, patch) {
   patch.updated_at = new Date().toISOString();
   const { error } = await db.from("items").update(patch).eq("id", id);
   log("updateItem", id, patch, error);
-  if (error) return toast("Could not update: " + error.message, 4000);
+  if (error) { toast(needsIdeasMigration(error) || "Could not update: " + error.message, 6000); return false; }
   Object.assign(state.items.find((i) => i.id === id), patch);
   updateHeader();
   setTimeout(renderList, patch.done ? 350 : 0); // short pause so the tick is visible
+  return true;
 }
+
+// Saving an idea before migrations/003-ideas.sql is run fails on the kind check or the missing columns
+function needsIdeasMigration(error) {
+  return /kind_check|status|impact|effort/i.test(error.message || "") ? "Ideas not set up yet — run migrations/003-ideas.sql in Supabase" : "";
+}
+const ideaStatus = (i) => i.status || "new"; // before the migration, rows have no status
 
 async function deleteItem(id, btn) {
   if (confirmDelete.armed !== id) { // first tap arms, second tap deletes
@@ -653,8 +687,8 @@ function buildPrompt(text) {
   const now = new Date(), tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
   const day = now.toLocaleDateString("en-US", { weekday: "short" });
   const lists = (state.lists.length ? state.lists.map((l) => l.name) : DEFAULT_LISTS).join("|");
-  return `Today ${day} ${iso(now)}. Split text into items. kind: todo (action) or note (idea/info). title: short clear English, translate Hinglish, keep acronyms. body: extra detail or "". tags: 1-3 lowercase words. due: YYYY-MM-DD if a day is mentioned (kal=tomorrow, aaj=today, parso=+2) else null. priority: 1 urgent, 2 normal, 3 someday. list: best fit from ${lists} (Inbox if unsure; things to buy → Shopping). store: only for Shopping, one of ${Object.keys(STORES).join("|")}, else null.
-Example: "kal HOD meeting, idea: mixup for SSL, paracetamol lena" → {"items":[{"kind":"todo","title":"Meeting with HOD","body":"","tags":["college"],"due":"${iso(tmr)}","priority":2,"list":"Office","store":null},{"kind":"note","title":"Use mixup for SSL","body":"","tags":["research"],"due":null,"priority":2,"list":"Research","store":null},{"kind":"todo","title":"Buy paracetamol","body":"","tags":["health"],"due":null,"priority":2,"list":"Shopping","store":"medical"}]}
+  return `Today ${day} ${iso(now)}. Split text into items. kind: todo (action to do), idea (something to maybe build/try/research/start later), or note (info to remember). title: short clear English, translate Hinglish, keep acronyms. body: extra detail or "". tags: 1-3 lowercase words. due: YYYY-MM-DD if a day is mentioned (kal=tomorrow, aaj=today, parso=+2) else null. priority: 1 urgent, 2 normal, 3 someday. list: best fit from ${lists} (Inbox if unsure; things to buy → Shopping). store: only for Shopping, one of ${Object.keys(STORES).join("|")}, else null.
+Example: "kal HOD meeting, idea: mixup for SSL, paracetamol lena" → {"items":[{"kind":"todo","title":"Meeting with HOD","body":"","tags":["college"],"due":"${iso(tmr)}","priority":2,"list":"Office","store":null},{"kind":"idea","title":"Use mixup for SSL","body":"","tags":["research"],"due":null,"priority":2,"list":"Research","store":null},{"kind":"todo","title":"Buy paracetamol","body":"","tags":["health"],"due":null,"priority":2,"list":"Shopping","store":"medical"}]}
 JSON only.
 Text: ${text}`;
 }
@@ -751,7 +785,7 @@ function findItemList(x) {
     const lists = Object.entries(x).map(([k, v]) => {
       const found = findItemList(v);
       // {"todos":[...], "notes":[...]} → use the key as the kind when missing
-      const kind = /todo|task/i.test(k) ? "todo" : /note|idea/i.test(k) ? "note" : null;
+      const kind = /todo|task/i.test(k) ? "todo" : /idea/i.test(k) ? "idea" : /note/i.test(k) ? "note" : null;
       return found.map((it) => (kind && !it.kind ? { ...it, kind } : it));
     });
     return lists.flat();
@@ -765,9 +799,9 @@ function offlineOrganize(text) {
   const chunks = text.split(/\n|;|,(?=\s*[a-z])/i).map((s) => s.replace(/^[-*•\d.)\s]+/, "").trim()).filter(Boolean);
   return chunks.map((c) => {
     const isTodo = verbs.test(c) || /\b(todo|tmrw|tomorrow|today|kal|aaj|karna|lena|by \w+day)\b/i.test(c);
-    const isIdea = /^(idea|note)\s*:/i.test(c);
+    const isIdea = /^idea\s*:/i.test(c), isNote = /^note\s*:/i.test(c);
     return cleanItem({
-      kind: isTodo && !isIdea ? "todo" : "note",
+      kind: isIdea ? "idea" : isTodo && !isNote ? "todo" : "note",
       title: c.replace(/^(idea|note|todo)\s*:\s*/i, ""),
       due: guessDate(c),
       tags: [],
@@ -790,7 +824,7 @@ const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOSt
 
 function cleanItem(i) {
   return {
-    kind: i.kind === "todo" ? "todo" : "note",
+    kind: KINDS.includes(i.kind) ? i.kind : "note",
     title: String(i.title || "").slice(0, 200) || "(untitled)",
     body: String(i.body || ""),
     tags: Array.isArray(i.tags) ? i.tags.slice(0, 5).map(String) : [],
@@ -826,7 +860,7 @@ function renderPreview() {
         <div class="item-title">${esc(p.title)}</div>
         ${p.body ? `<div class="item-body">${esc(p.body)}</div>` : ""}
         <div class="meta">
-          <span class="chip kind" data-flip="${n}">${icon(p.kind === "todo" ? "check" : "note")}${p.kind === "todo" ? "Task" : "Note"}</span>
+          <span class="chip kind" data-flip="${n}">${icon(KIND_ICON[p.kind])}${KIND_LABEL[p.kind]}</span>
           <select class="chip-select" data-plist="${n}">${listOptions(p.list, true)}</select>
           ${isShopping(p.list) && p.kind === "todo" ? `<select class="chip-select" data-pstore="${n}">${storeOptions(p.store || "other")}</select>` : ""}
           ${metaChips(p)}
@@ -837,7 +871,7 @@ function renderPreview() {
   $("preview").querySelectorAll("[data-plist]").forEach((el) => (el.onchange = () => { state.preview[el.dataset.plist].list = el.value; renderPreview(); }));
   $("preview").querySelectorAll("[data-pstore]").forEach((el) => (el.onchange = () => (state.preview[el.dataset.pstore].store = el.value)));
   $("preview").querySelectorAll("[data-flip]").forEach((b) => (b.onclick = () => {
-    const p = state.preview[b.dataset.flip]; p.kind = p.kind === "todo" ? "note" : "todo"; renderPreview();
+    const p = state.preview[b.dataset.flip]; p.kind = KINDS[(KINDS.indexOf(p.kind) + 1) % KINDS.length]; renderPreview(); // tap: Task → Note → Idea
   }));
 }
 
@@ -862,7 +896,8 @@ async function quickNote() {
 // ============ 12. LIST ============
 function renderListChips() {
   const kind = state.view;
-  const count = (id) => state.items.filter((i) => i.kind === kind && !(kind === "todo" && i.done) && (id === "all" || effListId(i) === id)).length;
+  const hidden = (i) => (kind === "todo" && i.done) || (kind === "idea" && ideaStatus(i) === "parked");
+  const count = (id) => state.items.filter((i) => i.kind === kind && !hidden(i) && (id === "all" || effListId(i) === id)).length;
   const chips = [{ id: "all", name: "All" }, ...state.lists];
   $("listChips").innerHTML = chips.map((l) =>
     `<button data-list="${l.id}" class="${state.list === l.id ? "on" : ""}">${esc(l.name)}<span class="n">${count(l.id)}</span></button>`
@@ -875,7 +910,7 @@ function renderListChips() {
 }
 
 function renderList() {
-  if (state.view !== "todo" && state.view !== "note") return;
+  if (!isList(state.view)) return;
   renderListChips();
   const kind = state.view, q = $("search").value.toLowerCase(), f = state.filter;
   const shopView = state.list !== "all" && isShopping(listNameById(state.list));
@@ -884,6 +919,16 @@ function renderList() {
 
   if (kind === "note") {
     $("list").innerHTML = rows.length ? `<div class="group">${rows.map(itemHtml).join("")}</div>` : emptyHtml("note", q ? "No matching notes" : "No notes here yet");
+  } else if (kind === "idea") {
+    const s = state.ideaFilter;
+    rows = rows.filter((i) => (s === "active" ? ideaStatus(i) !== "parked" : ideaStatus(i) === s)).sort(ideaRank);
+    const groups = s === "active"
+      ? ["doing", "exploring", "new"].map((st) => [IDEA_STATUS[st], rows.filter((i) => ideaStatus(i) === st)])
+      : [[IDEA_STATUS[s], rows]];
+    const shown = groups.filter(([, g]) => g.length);
+    $("list").innerHTML = shown.length
+      ? shown.map(([name, g]) => `<div class="label">${name} · ${g.length}</div><div class="group">${g.map(itemHtml).join("")}</div>`).join("")
+      : emptyHtml("bulb", q ? "No matching ideas" : "No ideas here yet");
   } else {
     if (f === "open") rows = rows.filter((i) => !i.done);
     if (f === "done") rows = rows.filter((i) => i.done);
@@ -910,6 +955,12 @@ function renderList() {
   $("list").querySelectorAll("[data-done]").forEach((c) => (c.onchange = () => updateItem(c.dataset.done, { done: c.checked })));
   $("list").querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteItem(b.dataset.del, b)));
   $("list").querySelectorAll("[data-edit]").forEach((el) => (el.onclick = () => openEditor(el.dataset.edit)));
+}
+
+// Best ideas first: high impact + low effort on top. Unrated ideas go last (rate them in the weekly review).
+function ideaRank(a, b) {
+  const score = (i) => (i.impact ? i.impact * 2 - (i.effort || 2) : -99);
+  return score(b) - score(a) || String(b.created_at).localeCompare(String(a.created_at));
 }
 
 function itemHtml(i) {
@@ -943,6 +994,9 @@ function openEditor(id) {
   $("ePrio").value = String(i.priority || 2);
   $("eStore").innerHTML = storeOptions(i.store || "other");
   $("eTags").value = (i.tags || []).join(", ");
+  $("eStatus").value = ideaStatus(i);
+  $("eImpact").value = i.impact ? String(i.impact) : "";
+  $("eEffort").value = i.effort ? String(i.effort) : "";
   toggleStoreField();
   $("sheet").classList.remove("hidden");
 }
@@ -950,6 +1004,9 @@ function openEditor(id) {
 function toggleStoreField() {
   const shop = isShopping(listNameById($("eList").value)) && $("eKind").value === "todo";
   $("eStoreWrap").classList.toggle("hidden", !shop);
+  const idea = $("eKind").value === "idea"; // ideas: status/impact/effort instead of due/priority
+  document.querySelectorAll("#sheet .only-idea").forEach((el) => el.classList.toggle("hidden", !idea));
+  document.querySelectorAll("#sheet .not-idea").forEach((el) => el.classList.toggle("hidden", idea));
 }
 
 function closeEditor() { state.editing = null; $("sheet").classList.add("hidden"); }
@@ -967,12 +1024,17 @@ async function saveEditor() {
     store: isShopping(listNameById(listId)) && kind === "todo" ? $("eStore").value : null,
     tags: $("eTags").value.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean).slice(0, 5),
   };
+  if (kind === "idea") Object.assign(patch, {
+    status: $("eStatus").value,
+    impact: Number($("eImpact").value) || null,
+    effort: Number($("eEffort").value) || null,
+  });
   if (!state.lists.length) { delete patch.list_id; delete patch.store; } // migration not run yet
   const id = state.editing;
   busy($("eSave"), true);
-  await updateItem(id, patch);
+  const ok = await updateItem(id, patch);
   busy($("eSave"), false);
-  closeEditor(); toast("Saved");
+  if (ok) { closeEditor(); toast("Saved"); } // on error keep the sheet open so nothing typed is lost
 }
 
 function metaChips(i) {
@@ -982,7 +1044,12 @@ function metaChips(i) {
     const cls = !i.done && i.due < today ? "overdue" : i.due === today ? "today" : "";
     html += `<span class="chip ${cls}">${icon("cal")}${dueLabel(i.due)}</span>`;
   }
-  if (i.priority === 1) html += `<span class="chip high">${icon("flag")}High</span>`;
+  if (i.kind === "idea") {
+    // Ideas tab only (the capture preview has nothing to rate yet). Status is already the group heading.
+    if (state.view === "idea") html += i.impact || i.effort
+      ? `<span class="chip ${i.impact === 3 ? "today" : ""}">Impact ${LEVEL[i.impact] || "?"} · Effort ${LEVEL[i.effort] || "?"}</span>`
+      : `<span class="chip">Not rated</span>`;
+  } else if (i.priority === 1) html += `<span class="chip high">${icon("flag")}High</span>`;
   (i.tags || []).forEach((t) => (html += `<span class="chip">${icon("tag")}${esc(t)}</span>`));
   return html;
 }
