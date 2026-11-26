@@ -356,6 +356,8 @@ If you forget it, nobody can open your locker — not even you. Write it on pape
         <button data-lv="board">Board</button>
       </div>
       <div id="lockList" style="margin-top:10px"></div>
+      <div class="sub" style="text-align:center;margin-top:18px">Auto-locks after 5 min idle or 1 min away. Copied passwords clear after 30 s.</div>
+      <button id="btnLockChange" class="btn btn-secondary" style="width:100%;margin-top:10px">Change locker password</button>
     </div>
 
     <div id="lockMsg" class="notice warn hidden"></div>
@@ -405,6 +407,17 @@ If you forget it, nobody can open your locker — not even you. Write it on pape
       <button id="lsSave" class="btn btn-primary">Save</button>
       <button id="lsDelete" class="btn btn-danger hidden">Delete</button>
     </div>
+  </div>
+</div>
+
+<div id="pwSheet" class="sheet hidden">
+  <div class="sheet-card">
+    <div class="sheet-head"><span>Change locker password</span><button id="pwClose" class="icon-btn" aria-label="Close">✕</button></div>
+    <input id="pwOld" class="field" type="password" placeholder="Current locker password" autocomplete="off">
+    <input id="pwNew1" class="field" type="password" placeholder="New locker password (8+ characters)" autocomplete="new-password">
+    <input id="pwNew2" class="field" type="password" placeholder="New password again" autocomplete="new-password">
+    <div class="notice warn">Write the new password on paper before you save. The old one stops working.</div>
+    <div class="btn-row"><button id="pwSave" class="btn btn-primary">Change password</button></div>
   </div>
 </div>
 
@@ -1207,7 +1220,8 @@ const DEFAULT_FIELDS = [ // your Notion fields — all optional
   { name: "Tag", type: "tag" }, { name: "URL", type: "url" },
 ];
 const LOCK = { meta: undefined, key: null, items: [], editing: null, draft: [], reveal: new Set(), armedDelete: false,
-  view: localStorage.getItem("lockView") || "list", q: "" };
+  view: localStorage.getItem("lockView") || "list", q: "",
+  last: Date.now(), hiddenAt: 0, clip: 0, clipTimer: null };
 
 // ---- crypto helpers ----
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -1244,6 +1258,11 @@ function wireLocker() {
   $("lsFields").onclick = onDraftClick;
   $("lsFields").onchange = (e) => { if (e.target.dataset.ft !== undefined) { syncDraft(); renderDraft(); } }; // type changed → new input kind
   $("lsAddField").onclick = addDraftField;
+  $("btnLockChange").onclick = openPwSheet;
+  $("pwClose").onclick = closePwSheet;
+  $("pwSave").onclick = changeLockPassword;
+  $("pwSheet").onclick = (e) => { if (e.target === $("pwSheet")) closePwSheet(); };
+  wireAutoLock();
   $("lsFields").oninput = (e) => { // typing a tag by hand → chips follow
     const box = $("lsFields").querySelector(`.tagpick[data-tp="${e.target.dataset.fv}"]`);
     if (box) box.innerHTML = tagPickHtml(e.target.value);
@@ -1291,7 +1310,7 @@ async function createLocker() {
     const row = { salt, iters: LOCK_ITERS, check_iv: chk.iv, check_data: chk.data };
     const { data, error } = await db.from("locker_meta").insert(row).select().single();
     if (error) throw error;
-    LOCK.meta = data; LOCK.key = key; LOCK.items = [];
+    LOCK.meta = data; LOCK.key = key; LOCK.items = []; LOCK.last = Date.now();
     $("lockNew1").value = $("lockNew2").value = "";
     toast("Locker created");
     renderLocker();
@@ -1309,7 +1328,7 @@ async function unlockLocker() {
     try { if ((await unseal(key, m.check_iv, m.check_data)) !== LOCK_CHECK) throw 0; }
     catch { busy($("btnUnlock"), false); $("lockPw").select(); return toast("Wrong locker password"); }
     $("lockPw").value = "";
-    LOCK.key = key;
+    LOCK.key = key; LOCK.last = Date.now();
     await loadLockItems();
     renderLocker();
   } catch (e) { toast("Could not unlock: " + (e.message || e), 5000); }
@@ -1332,7 +1351,8 @@ function lockNow(forget = false) {
   LOCK.key = null; LOCK.items = []; LOCK.reveal.clear(); LOCK.editing = null; LOCK.q = ""; $("lockSearch").value = "";
   document.body.classList.remove("wide");
   if (forget) LOCK.meta = undefined; // logout: next user may be different
-  $("lockSheet").classList.add("hidden");
+  $("lockSheet").classList.add("hidden"); $("lsFields").innerHTML = "";
+  closePwSheet();
   $("lockList").innerHTML = "";
   if (state.view === "locker") renderLocker();
 }
@@ -1442,8 +1462,10 @@ async function onLockListClick(e) {
   }
   if (t.dataset.copy) {
     const f = fieldByRef(t.dataset.copy);
-    try { await navigator.clipboard.writeText(f?.value || ""); toast(`${f?.name || "Value"} copied`); }
-    catch { toast("Copy blocked by the browser"); }
+    try {
+      if (f?.type === "secret") await copySecret(f.value, f.name);
+      else { await navigator.clipboard.writeText(f?.value || ""); toast(`${f?.name || "Value"} copied`); }
+    } catch { toast("Copy blocked by the browser"); }
     return;
   }
   if (t.dataset.ledit) openLockEditor(t.dataset.ledit);
@@ -1545,12 +1567,114 @@ function closeLockEditor() {
   $("lsFields").innerHTML = ""; // remove typed secrets from the page
 }
 
+// ---- Step 4: safety ----
+// Auto-lock: 5 min with no taps/keys in the Locker tab, or away from the app for more than 1 min.
+// (Away limit is 1 min, not 0, so you can copy a password into your bank app and come back.)
+const LOCK_IDLE_MS = 5 * 60 * 1000, LOCK_AWAY_MS = 60 * 1000, CLIP_MS = 30 * 1000;
+function wireAutoLock() {
+  const touch = () => { if (state.view === "locker") LOCK.last = Date.now(); };
+  ["pointerdown", "keydown", "wheel", "touchmove"].forEach((ev) => document.addEventListener(ev, touch, { passive: true, capture: true }));
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { LOCK.hiddenAt = Date.now(); return; }
+    if (LOCK.key && LOCK.hiddenAt && Date.now() - LOCK.hiddenAt > LOCK_AWAY_MS) autoLock();
+    LOCK.hiddenAt = 0;
+    checkIdle(); clearClipboardIfDue();
+  });
+  window.addEventListener("focus", clearClipboardIfDue);
+  setInterval(checkIdle, 10000);
+}
+function checkIdle() { if (LOCK.key && Date.now() - LOCK.last > LOCK_IDLE_MS) autoLock(); }
+function autoLock() { lockNow(); toast("Locker auto-locked"); }
+
+// Copy a secret, then wipe the clipboard after 30 s.
+// Browsers only allow clipboard writes while this page has focus, so if you are in another app
+// at 30 s, it is wiped the moment you come back.
+async function copySecret(text, label) {
+  await navigator.clipboard.writeText(text);
+  LOCK.clip = Date.now();
+  clearTimeout(LOCK.clipTimer);
+  LOCK.clipTimer = setTimeout(clearClipboardIfDue, CLIP_MS);
+  toast(`${label} copied · clears in 30 s`);
+}
+async function clearClipboardIfDue() {
+  if (!LOCK.clip || Date.now() - LOCK.clip < CLIP_MS - 500) return;
+  try { await navigator.clipboard.writeText(""); LOCK.clip = 0; log("clipboard cleared"); }
+  catch { /* page not focused yet — try again on focus */ }
+}
+
+// Change locker password: decrypt with old key (already in memory), re-encrypt everything with a new key.
+// Order keeps data safe: 1) all items saved with new key in ONE request (all-or-nothing)
+// 2) new salt/check saved. If 2 fails, step 1 is rolled back with the old scrambled rows.
+function openPwSheet() {
+  ["pwOld", "pwNew1", "pwNew2"].forEach((id) => ($(id).value = ""));
+  $("pwSheet").classList.remove("hidden");
+}
+function closePwSheet() {
+  ["pwOld", "pwNew1", "pwNew2"].forEach((id) => ($(id).value = ""));
+  $("pwSheet").classList.add("hidden");
+}
+async function changeLockPassword() {
+  const old = $("pwOld").value, p1 = $("pwNew1").value, p2 = $("pwNew2").value;
+  if (p1.length < 8) return toast("New password: use 8 or more characters");
+  if (p1 !== p2) return toast("The two new passwords don't match");
+  if (p1 === old) return toast("New password is the same as the old one");
+  if (LOCK.items.some((x) => x.broken)) return toast("Some items can't be decrypted — fix them first", 5000);
+  const btn = $("pwSave");
+  busy(btn, true);
+  try {
+    const m = LOCK.meta;
+    try { if ((await unseal(await deriveKey(old, m.salt, m.iters), m.check_iv, m.check_data)) !== LOCK_CHECK) throw 0; }
+    catch { busy(btn, false); return toast("Current locker password is wrong"); }
+
+    // Fresh copy from the server: the rollback copy, and a check that no other device added items
+    const { data: oldRows, error: e1 } = await db.from("locker_items").select("id, iv, data");
+    if (e1) throw e1;
+    const mine = new Set(LOCK.items.map((x) => x.id));
+    if (oldRows.length !== mine.size || oldRows.some((r) => !mine.has(r.id))) {
+      busy(btn, false); closePwSheet(); lockNow();
+      return toast("Locker changed on another device. Unlock again, then retry.", 5000);
+    }
+
+    const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+    const key = await deriveKey(p1, salt, LOCK_ITERS);
+    const chk = await seal(key, LOCK_CHECK);
+    const newRows = [];
+    for (const it of LOCK.items) newRows.push({ id: it.id, ...(await seal(key, { name: it.name, fields: it.fields })) });
+
+    if (newRows.length) {
+      const { error: e2 } = await db.from("locker_items").upsert(newRows);
+      if (e2) throw e2; // nothing changed
+    }
+    const { data: meta, error: e3 } = await db.from("locker_meta")
+      .update({ salt, iters: LOCK_ITERS, check_iv: chk.iv, check_data: chk.data }).eq("user_id", m.user_id).select().single();
+    if (e3) {
+      if (oldRows.length) await db.from("locker_items").upsert(oldRows); // roll back to old key
+      throw e3;
+    }
+    LOCK.meta = meta; LOCK.key = key;
+    closePwSheet();
+    toast("Locker password changed. Use the new one from now on.", 4000);
+  } catch (e) { toast("Could not change password: " + (e.message || e) + ". Old password still works.", 6000); }
+  busy(btn, false);
+}
+
+// Another device changed the password? Then this device's key is old — don't save with it.
+async function lockKeyStillValid() {
+  const { data, error } = await db.from("locker_meta").select("salt").maybeSingle();
+  if (error || !data) return true; // can't tell — let the save itself report errors
+  if (data.salt === LOCK.meta.salt) return true;
+  LOCK.meta = undefined; lockNow(); openLocker();
+  toast("Locker password was changed on another device. Unlock with the new one.", 6000);
+  return false;
+}
+
 async function saveLockItem() {
   if (!LOCK.key) { closeLockEditor(); return toast("Locker is locked"); }
   const item = readLockEditor();
   if (!item.name && !item.fields.some(filled)) return toast("Nothing to save");
   busy($("lsSave"), true);
   try {
+    if (!(await lockKeyStillValid())) { busy($("lsSave"), false); return; }
     const sealed = await seal(LOCK.key, item);
     const id = LOCK.editing;
     const q = id ? db.from("locker_items").update(sealed).eq("id", id) : db.from("locker_items").insert(sealed);
