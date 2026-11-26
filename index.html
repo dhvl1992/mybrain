@@ -156,6 +156,28 @@
   .login .field { margin-top: 10px; }
   .spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Locker ---------- */
+  .lock-gate { max-width: 380px; margin: 24px auto 0; text-align: center; }
+  .lock-gate .big { width: 44px; height: 44px; color: var(--muted); margin-bottom: 6px; }
+  .lock-gate .field { margin-top: 10px; text-align: left; }
+  .lock-gate .notice { text-align: left; }
+  .agree { display: flex; gap: 10px; align-items: flex-start; text-align: left; font-size: 13px; color: var(--muted); margin-top: 12px; cursor: pointer; }
+  .agree input { margin-top: 3px; }
+  .lrow { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-top: 4px; min-width: 0; }
+  .lrow .k { color: var(--faint); font-size: 12px; flex: none; min-width: 64px; }
+  .lrow .v { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lrow .v.secret { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; }
+  .lrow a { color: var(--accent); text-decoration: none; }
+  .mini { border: 1px solid var(--border); background: var(--surface); color: var(--muted); width: 30px; height: 28px; border-radius: 8px;
+          display: grid; place-items: center; cursor: pointer; flex: none; }
+  .mini svg { width: 15px; height: 15px; }
+  .mini:active { background: var(--surface-2); }
+  .lfield { margin-top: 12px; }
+  .lfield > span { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 4px 4px; }
+  .lfield .with-btn { display: flex; gap: 8px; }
+  .lfield .with-btn .mini { width: 44px; height: 46px; border-radius: var(--radius); }
+  #lsDelete { flex: 0 0 auto; }
 </style>
 </head>
 <body>
@@ -173,6 +195,10 @@
   <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4M4 4h13l-2 4 2 4H4"/></symbol>
   <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></symbol>
   <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.3h6c0-1 .4-1.8 1-2.3A7 7 0 0 0 12 2z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
 </svg>
 
@@ -272,6 +298,38 @@
       <button id="btnLogout" class="btn btn-danger" style="width:100%">Log out</button>
     </div>
   </section>
+
+  <!-- LOCKER (everything here is encrypted in the browser before saving) -->
+  <section id="viewLocker" class="hidden">
+    <div id="lockSetup" class="lock-gate hidden">
+      <svg class="i big"><use href="#i-lock"/></svg>
+      <h1 style="font-size:22px">Set a locker password</h1>
+      <div class="notice warn">This password locks your passwords. It is never saved anywhere.
+If you forget it, nobody can open your locker — not even you. Write it on paper and keep it safe.</div>
+      <input id="lockNew1" class="field" type="password" placeholder="Locker password (8+ characters)" autocomplete="new-password">
+      <input id="lockNew2" class="field" type="password" placeholder="Type it again" autocomplete="new-password">
+      <label class="agree"><input type="checkbox" id="lockAgree"><span>I understand: forget this password = locker data lost forever.</span></label>
+      <div class="btn-row"><button id="btnLockCreate" class="btn btn-primary">Create locker</button></div>
+    </div>
+
+    <div id="lockGate" class="lock-gate hidden">
+      <svg class="i big"><use href="#i-lock"/></svg>
+      <h1 style="font-size:22px">Locker is locked</h1>
+      <div class="sub">Type your locker password (not your login password).</div>
+      <input id="lockPw" class="field" type="password" placeholder="Locker password" autocomplete="off">
+      <div class="btn-row"><button id="btnUnlock" class="btn btn-primary">Unlock</button></div>
+    </div>
+
+    <div id="lockOpen" class="hidden">
+      <div class="btn-row" style="margin-top:4px">
+        <button id="btnLockAdd" class="btn btn-primary">+ New item</button>
+        <button id="btnLockNow" class="btn btn-secondary" style="flex:0 0 auto"><svg class="i"><use href="#i-lock"/></svg>Lock</button>
+      </div>
+      <div id="lockList" style="margin-top:12px"></div>
+    </div>
+
+    <div id="lockMsg" class="notice warn hidden"></div>
+  </section>
 </div>
 
 <nav class="tabs hidden" id="nav">
@@ -280,6 +338,7 @@
     <button data-view="todo"><svg class="i"><use href="#i-check"/></svg>Tasks<span class="badge hidden" id="badge"></span></button>
     <button data-view="note"><svg class="i"><use href="#i-note"/></svg>Notes</button>
     <button data-view="idea"><svg class="i"><use href="#i-bulb"/></svg>Ideas</button>
+    <button data-view="locker"><svg class="i"><use href="#i-lock"/></svg>Locker</button>
   </div>
 </nav>
 
@@ -302,6 +361,18 @@
     <div class="btn-row">
       <button id="eSave" class="btn btn-primary">Save</button>
       <button id="eCancel" class="btn btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="lockSheet" class="sheet hidden">
+  <div class="sheet-card">
+    <div class="sheet-head"><span id="lsTitle">New item</span><button id="lsClose" class="icon-btn" aria-label="Close">✕</button></div>
+    <input id="lsName" class="field" placeholder="Name (e.g. SBI net banking)" autocomplete="off">
+    <div id="lsFields"></div>
+    <div class="btn-row">
+      <button id="lsSave" class="btn btn-primary">Save</button>
+      <button id="lsDelete" class="btn btn-danger hidden">Delete</button>
     </div>
   </div>
 </div>
@@ -343,7 +414,7 @@ const state = { prov: "groq", user: null, items: [], lists: [], list: "all", vie
 const $ = (id) => document.getElementById(id);
 const log = (...a) => DEBUG && console.log("[MyBrain]", ...a);
 const icon = (name) => `<svg class="i"><use href="#i-${name}"/></svg>`;
-const TITLES = { capture: "Capture", todo: "Tasks", note: "Notes", idea: "Ideas", settings: "Settings" };
+const TITLES = { capture: "Capture", todo: "Tasks", note: "Notes", idea: "Ideas", settings: "Settings", locker: "Locker" };
 
 // ============ 3. BOOT ============
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch((e) => log("sw failed", e));
@@ -364,7 +435,7 @@ function wireEvents() {
   $("btnLogin").onclick = () => auth("login");
   $("btnSignup").onclick = () => auth("signup");
   $("password").onkeydown = (e) => { if (e.key === "Enter") auth("login"); };
-  $("btnLogout").onclick = async () => { await db.auth.signOut(); state.user = null; state.items = []; show("login"); };
+  $("btnLogout").onclick = async () => { lockNow(true); await db.auth.signOut(); state.user = null; state.items = []; show("login"); };
   $("btnSettings").onclick = () => show(state.view === "settings" ? "capture" : "settings");
   $("btnSaveSettings").onclick = () => { saveSettings(); toast(`Saved · using ${PROVIDERS[state.prov].label}`); };
   document.querySelectorAll("#provSeg button").forEach((b) => (b.onclick = () => fillSettings(b.dataset.p)));
@@ -393,6 +464,7 @@ function wireEvents() {
   $("eSave").onclick = saveEditor;
   $("sheet").onclick = (e) => e.target === $("sheet") && closeEditor();
   $("eList").onchange = $("eKind").onchange = toggleStoreField;
+  wireLocker();
 }
 
 // ============ 5. VIEWS ============
@@ -405,6 +477,7 @@ function show(view) {
   $("viewCapture").classList.toggle("hidden", view !== "capture");
   $("viewList").classList.toggle("hidden", !isList(view));
   $("viewSettings").classList.toggle("hidden", view !== "settings");
+  $("viewLocker").classList.toggle("hidden", view !== "locker");
   $("seg").classList.toggle("hidden", view !== "todo");
   $("ideaSeg").classList.toggle("hidden", view !== "idea");
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("on", b.dataset.view === view));
@@ -415,6 +488,7 @@ function show(view) {
   updateHeader();
   if (isList(view)) renderList();
   if (view === "settings") renderListSettings();
+  if (view === "locker") openLocker();
 }
 
 function updateHeader() {
@@ -431,6 +505,7 @@ function updateHeader() {
     note: `${where} · ${state.items.filter((i) => i.kind === "note" && inList(i)).length} notes`,
     idea: `${where} · ${state.items.filter((i) => i.kind === "idea" && inList(i) && i.status !== "parked").length} active ideas`,
     settings: "",
+    locker: !LOCK.key ? "Locked" : `${LOCK.items.length} item${LOCK.items.length === 1 ? "" : "s"} · unlocked`,
   };
   $("subtitle").textContent = sub[state.view] || "";
   $("badge").textContent = dueNow;
@@ -1084,6 +1159,283 @@ function exportBackup() {
   a.download = `mybrain-backup-${iso(new Date())}.json`;
   a.click();
   toast(`Exported ${state.items.length} items`);
+}
+
+// ============ 14. LOCKER ============
+// How it works (first principles):
+// 1. Your locker password + a random "salt" → PBKDF2 (600k rounds) → one AES-256 key.
+// 2. Every item is turned into JSON and encrypted with that key (AES-GCM) in this browser.
+// 3. Supabase only ever receives scrambled text. The password and the key are never sent or saved.
+// 4. A known word ("check") is stored encrypted. If it decrypts, the password was right.
+// The key lives only in memory (LOCK.key). Lock / logout / page close → it is gone.
+const LOCK_ITERS = 600000;
+const LOCK_CHECK = "mybrain-locker-ok";
+const FIELD_TYPES = { text: "Text", secret: "Secret", url: "URL", tag: "Tag", note: "Note" };
+const DEFAULT_FIELDS = [ // your Notion fields — all optional
+  { name: "ID", type: "text" }, { name: "PW", type: "secret" }, { name: "Remarks", type: "note" },
+  { name: "Tag", type: "tag" }, { name: "URL", type: "url" },
+];
+const LOCK = { meta: undefined, key: null, items: [], editing: null, reveal: new Set(), armedDelete: false };
+
+// ---- crypto helpers ----
+const enc = new TextEncoder(), dec = new TextDecoder();
+function b64(buf) { const a = new Uint8Array(buf); let s = ""; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); }
+function unb64(s) { return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); }
+async function deriveKey(password, saltB64, iters) {
+  const base = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: unb64(saltB64), iterations: iters, hash: "SHA-256" },
+    base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]); // false = key can't be exported
+}
+async function seal(key, obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // fresh random IV for every save
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(JSON.stringify(obj)));
+  return { iv: b64(iv), data: b64(ct) };
+}
+async function unseal(key, iv, data) {
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv) }, key, unb64(data));
+  return JSON.parse(dec.decode(pt));
+}
+
+// ---- events ----
+function wireLocker() {
+  $("btnLockCreate").onclick = createLocker;
+  $("lockNew2").onkeydown = (e) => { if (e.key === "Enter") createLocker(); };
+  $("btnUnlock").onclick = unlockLocker;
+  $("lockPw").onkeydown = (e) => { if (e.key === "Enter") unlockLocker(); };
+  $("btnLockNow").onclick = () => { lockNow(); toast("Locked"); };
+  $("btnLockAdd").onclick = () => openLockEditor(null);
+  $("lsClose").onclick = closeLockEditor;
+  $("lockSheet").onclick = (e) => { if (e.target === $("lockSheet")) closeLockEditor(); };
+  $("lsSave").onclick = saveLockItem;
+  $("lsDelete").onclick = deleteLockItem;
+  $("lockList").onclick = onLockListClick;
+  $("lsFields").onclick = (e) => {
+    const b = e.target.closest("[data-peek]");
+    if (!b) return;
+    const inp = b.previousElementSibling;
+    inp.type = inp.type === "password" ? "text" : "password";
+  };
+}
+
+// ---- open / setup / unlock / lock ----
+async function openLocker() {
+  if (LOCK.meta === undefined) { // first visit this session: does a locker exist?
+    lockMsg("");
+    const { data, error } = await db.from("locker_meta").select("*").maybeSingle();
+    log("locker meta", data ? "found" : "none", error?.message);
+    if (error) return lockMsg(/locker_meta|relation|schema cache/i.test(error.message)
+      ? "Locker not set up yet — run migrations/004-locker.sql in Supabase." : "Could not load locker: " + error.message);
+    LOCK.meta = data || null;
+  }
+  renderLocker();
+}
+
+function lockMsg(text) { $("lockMsg").textContent = text; $("lockMsg").classList.toggle("hidden", !text); }
+
+function renderLocker() {
+  const mode = LOCK.meta === null ? "setup" : !LOCK.key ? "gate" : "open";
+  $("lockSetup").classList.toggle("hidden", mode !== "setup");
+  $("lockGate").classList.toggle("hidden", mode !== "gate");
+  $("lockOpen").classList.toggle("hidden", mode !== "open");
+  if (mode === "open") renderLockList();
+  updateHeader();
+}
+
+async function createLocker() {
+  const p1 = $("lockNew1").value, p2 = $("lockNew2").value;
+  if (p1.length < 8) return toast("Use 8 or more characters");
+  if (p1 !== p2) return toast("The two passwords don't match");
+  if (!$("lockAgree").checked) return toast("Tick the box to confirm you understand");
+  busy($("btnLockCreate"), true);
+  try {
+    const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+    const key = await deriveKey(p1, salt, LOCK_ITERS);
+    const chk = await seal(key, LOCK_CHECK);
+    const row = { salt, iters: LOCK_ITERS, check_iv: chk.iv, check_data: chk.data };
+    const { data, error } = await db.from("locker_meta").insert(row).select().single();
+    if (error) throw error;
+    LOCK.meta = data; LOCK.key = key; LOCK.items = [];
+    $("lockNew1").value = $("lockNew2").value = "";
+    toast("Locker created");
+    renderLocker();
+  } catch (e) { toast("Could not create locker: " + (e.message || e), 5000); }
+  busy($("btnLockCreate"), false);
+}
+
+async function unlockLocker() {
+  const pw = $("lockPw").value;
+  if (!pw) return;
+  busy($("btnUnlock"), true);
+  try {
+    const m = LOCK.meta;
+    const key = await deriveKey(pw, m.salt, m.iters);
+    try { if ((await unseal(key, m.check_iv, m.check_data)) !== LOCK_CHECK) throw 0; }
+    catch { busy($("btnUnlock"), false); $("lockPw").select(); return toast("Wrong locker password"); }
+    $("lockPw").value = "";
+    LOCK.key = key;
+    await loadLockItems();
+    renderLocker();
+  } catch (e) { toast("Could not unlock: " + (e.message || e), 5000); }
+  busy($("btnUnlock"), false);
+}
+
+async function loadLockItems() {
+  const { data, error } = await db.from("locker_items").select("*");
+  if (error) { toast("Could not load locker: " + error.message, 5000); LOCK.items = []; return; }
+  const out = [];
+  for (const r of data) {
+    try { out.push({ id: r.id, updated_at: r.updated_at, ...(await unseal(LOCK.key, r.iv, r.data)) }); }
+    catch { out.push({ id: r.id, updated_at: r.updated_at, name: "⚠ Can't decrypt this item", fields: [], broken: true }); }
+  }
+  LOCK.items = out;
+  log("locker items", out.length); // count only — never log contents
+}
+
+function lockNow(forget = false) {
+  LOCK.key = null; LOCK.items = []; LOCK.reveal.clear(); LOCK.editing = null;
+  if (forget) LOCK.meta = undefined; // logout: next user may be different
+  $("lockSheet").classList.add("hidden");
+  $("lockList").innerHTML = "";
+  if (state.view === "locker") renderLocker();
+}
+
+// ---- list view ----
+const lockName = (it) => it.name?.trim() || "Untitled";
+const filled = (f) => String(f.value ?? "").trim() !== "";
+const splitTags = (v) => String(v || "").split(",").map((t) => t.trim()).filter(Boolean);
+function safeUrl(u) { u = String(u || "").trim(); return /^https?:\/\//i.test(u) ? u : "https://" + u.replace(/^[a-z]+:/i, ""); }
+
+function renderLockList() {
+  const items = [...LOCK.items].sort((a, b) => lockName(a).localeCompare(lockName(b), undefined, { sensitivity: "base" }));
+  if (!items.length) { $("lockList").innerHTML = emptyHtml("lock", "Locker is empty. Tap <b>+ New item</b>."); return; }
+  $("lockList").innerHTML = `<div class="group">${items.map(lockItemHtml).join("")}</div>`;
+}
+
+function lockItemHtml(it) {
+  const rows = [], tags = [];
+  (it.fields || []).forEach((f, idx) => {
+    if (!filled(f)) return;
+    const k = `<span class="k">${esc(f.name)}</span>`;
+    const ref = `${it.id}:${idx}`;
+    if (f.type === "tag") return tags.push(...splitTags(f.value));
+    if (f.type === "secret") {
+      const shown = LOCK.reveal.has(ref);
+      rows.push(`<div class="lrow">${k}<span class="v secret">${shown ? esc(f.value) : "••••••••"}</span>
+        <button class="mini" data-reveal="${ref}" aria-label="Show">${icon("eye")}</button>
+        <button class="mini" data-copy="${ref}" aria-label="Copy">${icon("copy")}</button></div>`);
+    } else if (f.type === "url") {
+      rows.push(`<div class="lrow">${k}<a class="v" href="${esc(safeUrl(f.value))}" target="_blank" rel="noopener noreferrer">${esc(f.value)}</a></div>`);
+    } else if (f.type === "note") {
+      rows.push(`<div class="item-body">${esc(f.value)}</div>`);
+    } else {
+      rows.push(`<div class="lrow">${k}<span class="v">${esc(f.value)}</span>
+        <button class="mini" data-copy="${ref}" aria-label="Copy">${icon("copy")}</button></div>`);
+    }
+  });
+  const chips = tags.map((t) => `<span class="chip">${icon("tag")}${esc(t)}</span>`).join("");
+  return `<div class="item note">
+    <div class="item-main">
+      <div class="item-title" data-ledit="${it.id}" style="cursor:pointer">${esc(lockName(it))}</div>
+      ${rows.join("")}
+      <div class="meta">${chips}<span>${relDate(it.updated_at)}</span></div>
+    </div>
+    <button class="del" data-ledit="${it.id}" aria-label="Edit">${icon("note")}</button>
+  </div>`;
+}
+
+function fieldByRef(ref) {
+  const [id, idx] = ref.split(":");
+  return LOCK.items.find((x) => x.id === id)?.fields?.[Number(idx)];
+}
+
+async function onLockListClick(e) {
+  const t = e.target.closest("[data-reveal],[data-copy],[data-ledit]");
+  if (!t) return;
+  if (t.dataset.reveal) {
+    const r = t.dataset.reveal;
+    LOCK.reveal.has(r) ? LOCK.reveal.delete(r) : LOCK.reveal.add(r);
+    return renderLockList();
+  }
+  if (t.dataset.copy) {
+    const f = fieldByRef(t.dataset.copy);
+    try { await navigator.clipboard.writeText(f?.value || ""); toast(`${f?.name || "Value"} copied`); }
+    catch { toast("Copy blocked by the browser"); }
+    return;
+  }
+  if (t.dataset.ledit) openLockEditor(t.dataset.ledit);
+}
+
+// ---- add / edit sheet ----
+function openLockEditor(id) {
+  const it = id ? LOCK.items.find((x) => x.id === id) : null;
+  if (it?.broken) return toast("This item can't be decrypted");
+  LOCK.editing = id;
+  LOCK.armedDelete = false;
+  $("lsTitle").textContent = it ? "Edit item" : "New item";
+  $("lsName").value = it?.name || "";
+  const fields = it ? it.fields : DEFAULT_FIELDS.map((f) => ({ ...f, value: "" }));
+  $("lsFields").innerHTML = fields.map(fieldInputHtml).join("");
+  $("lsDelete").classList.toggle("hidden", !it);
+  $("lsDelete").textContent = "Delete";
+  $("lockSheet").classList.remove("hidden");
+}
+
+function fieldInputHtml(f, idx) {
+  const attrs = `class="field" data-fi="${idx}" data-name="${esc(f.name)}" data-type="${f.type}" autocomplete="off"`;
+  const v = esc(f.value || "");
+  let input;
+  if (f.type === "note") input = `<textarea ${attrs} rows="3" style="min-height:80px">${v}</textarea>`;
+  else if (f.type === "secret") input = `<div class="with-btn"><input ${attrs} type="password" value="${v}" autocomplete="new-password"><button type="button" class="mini" data-peek aria-label="Show">${icon("eye")}</button></div>`;
+  else if (f.type === "tag") input = `<input ${attrs} value="${v}" placeholder="comma, separated">`;
+  else if (f.type === "url") input = `<input ${attrs} type="url" inputmode="url" value="${v}" placeholder="https://">`;
+  else input = `<input ${attrs} value="${v}">`;
+  const typ = FIELD_TYPES[f.type] || "Text";
+  const label = f.name.toLowerCase() === typ.toLowerCase() ? esc(f.name) : `${esc(f.name)} · ${typ}`;
+  return `<label class="lfield"><span>${label}</span>${input}</label>`;
+}
+
+function readLockEditor() {
+  const fields = [...$("lsFields").querySelectorAll("[data-fi]")].map((el) => ({
+    name: el.dataset.name, type: el.dataset.type, value: el.value,
+  }));
+  return { name: $("lsName").value.trim(), fields };
+}
+
+function closeLockEditor() {
+  LOCK.editing = null;
+  $("lockSheet").classList.add("hidden");
+  $("lsFields").innerHTML = ""; // remove typed secrets from the page
+}
+
+async function saveLockItem() {
+  if (!LOCK.key) { closeLockEditor(); return toast("Locker is locked"); }
+  const item = readLockEditor();
+  if (!item.name && !item.fields.some(filled)) return toast("Nothing to save");
+  busy($("lsSave"), true);
+  try {
+    const sealed = await seal(LOCK.key, item);
+    const id = LOCK.editing;
+    const q = id ? db.from("locker_items").update(sealed).eq("id", id) : db.from("locker_items").insert(sealed);
+    const { data, error } = await q.select().single();
+    if (error) throw error;
+    const saved = { id: data.id, updated_at: data.updated_at, ...item };
+    LOCK.items = id ? LOCK.items.map((x) => (x.id === id ? saved : x)) : [saved, ...LOCK.items];
+    closeLockEditor();
+    renderLocker();
+    toast("Saved");
+  } catch (e) { toast("Could not save: " + (e.message || e), 5000); } // sheet stays open, nothing lost
+  busy($("lsSave"), false);
+}
+
+async function deleteLockItem() {
+  if (!LOCK.armedDelete) { LOCK.armedDelete = true; $("lsDelete").textContent = "Tap again"; return; }
+  const id = LOCK.editing;
+  const { error } = await db.from("locker_items").delete().eq("id", id);
+  if (error) return toast("Could not delete: " + error.message, 4000);
+  LOCK.items = LOCK.items.filter((x) => x.id !== id);
+  closeLockEditor();
+  renderLocker();
+  toast("Deleted");
 }
 
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
