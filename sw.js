@@ -1,7 +1,7 @@
 // Service worker: makes the app installable and opens it even with weak network.
 // Strategy: network first (so you always get the latest version), cache as backup.
 // Only same-origin files are cached. Supabase and Gemini calls are never cached.
-const CACHE = "mybrain-v15";
+const CACHE = "mybrain-v17";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icons/icon-192.png", "./icons/icon-512.png", "./vendor/supabase.js"];
 
 self.addEventListener("install", (e) => {
