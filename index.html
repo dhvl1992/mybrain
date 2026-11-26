@@ -198,6 +198,10 @@
   .bhead .n { color: var(--muted); font-weight: 500; }
   .bcard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 8px; box-shadow: var(--shadow); }
   .bcard .lrow .k { min-width: 48px; }
+  .tagpick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tagpick:empty { display: none; }
+  .tchip { height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; color: var(--muted); cursor: pointer; }
+  .tchip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 </style>
 </head>
 <body>
@@ -1240,6 +1244,10 @@ function wireLocker() {
   $("lsFields").onclick = onDraftClick;
   $("lsFields").onchange = (e) => { if (e.target.dataset.ft !== undefined) { syncDraft(); renderDraft(); } }; // type changed → new input kind
   $("lsAddField").onclick = addDraftField;
+  $("lsFields").oninput = (e) => { // typing a tag by hand → chips follow
+    const box = $("lsFields").querySelector(`.tagpick[data-tp="${e.target.dataset.fv}"]`);
+    if (box) box.innerHTML = tagPickHtml(e.target.value);
+  };
   $("lockSearch").oninput = (e) => { LOCK.q = e.target.value; renderLockList(); };
   document.querySelectorAll("#lockSeg button").forEach((b) => (b.onclick = () => {
     LOCK.view = b.dataset.lv; localStorage.setItem("lockView", LOCK.view); renderLockList();
@@ -1467,7 +1475,7 @@ function draftRowHtml(f, i) {
   let input;
   if (f.type === "note") input = `<textarea ${a} rows="3" style="min-height:80px">${v}</textarea>`;
   else if (f.type === "secret") input = `<div class="with-btn"><input ${a} type="password" value="${v}" autocomplete="new-password"><button type="button" class="mini" data-peek aria-label="Show">${icon("eye")}</button></div>`;
-  else if (f.type === "tag") input = `<input ${a} value="${v}" placeholder="comma, separated">`;
+  else if (f.type === "tag") input = `<input ${a} value="${v}" placeholder="Type new tag, or tap one below"><div class="tagpick" data-tp="${i}">${tagPickHtml(f.value)}</div>`;
   else if (f.type === "url") input = `<input ${a} type="url" inputmode="url" value="${v}" placeholder="https://">`;
   else input = `<input ${a} value="${v}">`;
   const types = Object.entries(FIELD_TYPES).map(([k, l]) => `<option value="${k}" ${k === f.type ? "selected" : ""}>${l}</option>`).join("");
@@ -1481,6 +1489,25 @@ function draftRowHtml(f, i) {
   </div>`;
 }
 
+// Tag picker: every tag already used in the locker, one tap to add / remove
+function allLockTags() {
+  const seen = new Map(); // lowercase → first spelling used
+  LOCK.items.forEach((it) => itemTags(it).forEach((t) => { if (!seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t); }));
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+function tagPickHtml(value) {
+  const cur = splitTags(value).map((t) => t.toLowerCase());
+  return allLockTags().map((t) => `<button type="button" class="tchip ${cur.includes(t.toLowerCase()) ? "on" : ""}" data-tag="${esc(t)}">${esc(t)}</button>`).join("");
+}
+function toggleTag(btn) {
+  const box = btn.closest(".tagpick"), inp = $("lsFields").querySelector(`[data-fv="${box.dataset.tp}"]`);
+  const tag = btn.dataset.tag, tags = splitTags(inp.value);
+  const i = tags.findIndex((t) => t.toLowerCase() === tag.toLowerCase());
+  i >= 0 ? tags.splice(i, 1) : tags.push(tag);
+  inp.value = tags.join(", ");
+  box.innerHTML = tagPickHtml(inp.value);
+}
+
 function syncDraft() { // copy what's typed on screen back into LOCK.draft
   document.querySelectorAll("#lsFields [data-fn]").forEach((el) => (LOCK.draft[el.dataset.fn].name = el.value));
   document.querySelectorAll("#lsFields [data-ft]").forEach((el) => (LOCK.draft[el.dataset.ft].type = el.value));
@@ -1488,6 +1515,8 @@ function syncDraft() { // copy what's typed on screen back into LOCK.draft
 }
 
 function onDraftClick(e) {
+  const tag = e.target.closest("[data-tag]");
+  if (tag) return toggleTag(tag);
   const peek = e.target.closest("[data-peek]");
   if (peek) { const inp = peek.previousElementSibling; inp.type = inp.type === "password" ? "text" : "password"; return; }
   const del = e.target.closest("[data-fdel]");
@@ -1503,7 +1532,10 @@ function addDraftField() {
 
 function readLockEditor() {
   syncDraft();
-  const fields = LOCK.draft.map((f) => ({ name: f.name.trim() || FIELD_TYPES[f.type] || "Field", type: f.type, value: f.value }));
+  const known = new Map(allLockTags().map((t) => [t.toLowerCase(), t])); // "money" → existing "Money"
+  const fixTags = (v) => [...new Set(splitTags(v).map((t) => known.get(t.toLowerCase()) || t))].join(", ");
+  const fields = LOCK.draft.map((f) => ({ name: f.name.trim() || FIELD_TYPES[f.type] || "Field", type: f.type,
+    value: f.type === "tag" ? fixTags(f.value) : f.value }));
   return { name: $("lsName").value.trim(), fields };
 }
 
