@@ -1,0 +1,3 @@
+@supabase/supabase-js 2.119.2
+source: npm registry tarball supabase-supabase-js-2.119.2.tgz
+sha384-A97u3Qnt9GZHURO9YJZRe7VQgGUeFzcv6I1oIGnUTxQrCxnpQMwR0/G8F2zt9abZ
