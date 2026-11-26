@@ -178,6 +178,30 @@
   .lfield .with-btn { display: flex; gap: 8px; }
   .lfield .with-btn .mini { width: 44px; height: 46px; border-radius: var(--radius); }
   #lsDelete { flex: 0 0 auto; }
+  .fhead { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .fname { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 12px; font-weight: 600; color: var(--muted); padding: 4px; border-radius: 6px; outline: none; }
+  .fname:focus { background: var(--surface); color: var(--text); }
+  .ftype { height: 28px; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; font-size: 12px; padding: 0 6px; }
+  body.wide .wrap { max-width: 1200px; }
+  .ltable-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .ltable { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .ltable th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; background: var(--surface-2); }
+  .ltable td { padding: 8px 12px; border-top: 1px solid var(--border); vertical-align: middle; }
+  .ltable tr:first-child td { border-top: 0; }
+  .ltable .cell { display: flex; align-items: center; gap: 6px; min-width: 90px; max-width: 260px; }
+  .ltable .cell .v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ltable .cell a { color: var(--accent); text-decoration: none; }
+  .tname { font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .board { display: flex; gap: 12px; overflow-x: auto; align-items: flex-start; padding-bottom: 8px; }
+  .bcol { flex: 0 0 270px; background: var(--surface-2); border-radius: var(--radius); padding: 10px; }
+  .bhead { font-size: 13px; font-weight: 700; padding: 2px 4px 4px; display: flex; justify-content: space-between; }
+  .bhead .n { color: var(--muted); font-weight: 500; }
+  .bcard { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 8px; box-shadow: var(--shadow); }
+  .bcard .lrow .k { min-width: 48px; }
+  .tagpick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tagpick:empty { display: none; }
+  .tchip { height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; color: var(--muted); cursor: pointer; }
+  .tchip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 </style>
 </head>
 <body>
@@ -325,7 +349,13 @@ If you forget it, nobody can open your locker — not even you. Write it on pape
         <button id="btnLockAdd" class="btn btn-primary">+ New item</button>
         <button id="btnLockNow" class="btn btn-secondary" style="flex:0 0 auto"><svg class="i"><use href="#i-lock"/></svg>Lock</button>
       </div>
-      <div id="lockList" style="margin-top:12px"></div>
+      <div class="search" style="margin-top:12px"><svg class="i"><use href="#i-search"/></svg><input id="lockSearch" class="field" placeholder="Search (passwords are never searched)" autocomplete="off"></div>
+      <div class="seg" id="lockSeg">
+        <button data-lv="list" class="on">List</button>
+        <button data-lv="table">Table</button>
+        <button data-lv="board">Board</button>
+      </div>
+      <div id="lockList" style="margin-top:10px"></div>
     </div>
 
     <div id="lockMsg" class="notice warn hidden"></div>
@@ -370,6 +400,7 @@ If you forget it, nobody can open your locker — not even you. Write it on pape
     <div class="sheet-head"><span id="lsTitle">New item</span><button id="lsClose" class="icon-btn" aria-label="Close">✕</button></div>
     <input id="lsName" class="field" placeholder="Name (e.g. SBI net banking)" autocomplete="off">
     <div id="lsFields"></div>
+    <button id="lsAddField" class="btn btn-secondary" style="width:100%;margin-top:12px">+ Add field</button>
     <div class="btn-row">
       <button id="lsSave" class="btn btn-primary">Save</button>
       <button id="lsDelete" class="btn btn-danger hidden">Delete</button>
@@ -488,7 +519,7 @@ function show(view) {
   updateHeader();
   if (isList(view)) renderList();
   if (view === "settings") renderListSettings();
-  if (view === "locker") openLocker();
+  if (view === "locker") openLocker(); else document.body.classList.remove("wide");
 }
 
 function updateHeader() {
@@ -1175,7 +1206,8 @@ const DEFAULT_FIELDS = [ // your Notion fields — all optional
   { name: "ID", type: "text" }, { name: "PW", type: "secret" }, { name: "Remarks", type: "note" },
   { name: "Tag", type: "tag" }, { name: "URL", type: "url" },
 ];
-const LOCK = { meta: undefined, key: null, items: [], editing: null, reveal: new Set(), armedDelete: false };
+const LOCK = { meta: undefined, key: null, items: [], editing: null, draft: [], reveal: new Set(), armedDelete: false,
+  view: localStorage.getItem("lockView") || "list", q: "" };
 
 // ---- crypto helpers ----
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -1209,12 +1241,17 @@ function wireLocker() {
   $("lsSave").onclick = saveLockItem;
   $("lsDelete").onclick = deleteLockItem;
   $("lockList").onclick = onLockListClick;
-  $("lsFields").onclick = (e) => {
-    const b = e.target.closest("[data-peek]");
-    if (!b) return;
-    const inp = b.previousElementSibling;
-    inp.type = inp.type === "password" ? "text" : "password";
+  $("lsFields").onclick = onDraftClick;
+  $("lsFields").onchange = (e) => { if (e.target.dataset.ft !== undefined) { syncDraft(); renderDraft(); } }; // type changed → new input kind
+  $("lsAddField").onclick = addDraftField;
+  $("lsFields").oninput = (e) => { // typing a tag by hand → chips follow
+    const box = $("lsFields").querySelector(`.tagpick[data-tp="${e.target.dataset.fv}"]`);
+    if (box) box.innerHTML = tagPickHtml(e.target.value);
   };
+  $("lockSearch").oninput = (e) => { LOCK.q = e.target.value; renderLockList(); };
+  document.querySelectorAll("#lockSeg button").forEach((b) => (b.onclick = () => {
+    LOCK.view = b.dataset.lv; localStorage.setItem("lockView", LOCK.view); renderLockList();
+  }));
 }
 
 // ---- open / setup / unlock / lock ----
@@ -1237,7 +1274,7 @@ function renderLocker() {
   $("lockSetup").classList.toggle("hidden", mode !== "setup");
   $("lockGate").classList.toggle("hidden", mode !== "gate");
   $("lockOpen").classList.toggle("hidden", mode !== "open");
-  if (mode === "open") renderLockList();
+  if (mode === "open") renderLockList(); else document.body.classList.remove("wide");
   updateHeader();
 }
 
@@ -1292,55 +1329,102 @@ async function loadLockItems() {
 }
 
 function lockNow(forget = false) {
-  LOCK.key = null; LOCK.items = []; LOCK.reveal.clear(); LOCK.editing = null;
+  LOCK.key = null; LOCK.items = []; LOCK.reveal.clear(); LOCK.editing = null; LOCK.q = ""; $("lockSearch").value = "";
+  document.body.classList.remove("wide");
   if (forget) LOCK.meta = undefined; // logout: next user may be different
   $("lockSheet").classList.add("hidden");
   $("lockList").innerHTML = "";
   if (state.view === "locker") renderLocker();
 }
 
-// ---- list view ----
+// ---- views: List / Table / Board ----
 const lockName = (it) => it.name?.trim() || "Untitled";
 const filled = (f) => String(f.value ?? "").trim() !== "";
 const splitTags = (v) => String(v || "").split(",").map((t) => t.trim()).filter(Boolean);
 function safeUrl(u) { u = String(u || "").trim(); return /^https?:\/\//i.test(u) ? u : "https://" + u.replace(/^[a-z]+:/i, ""); }
+const itemTags = (it) => (it.fields || []).filter((f) => f.type === "tag").flatMap((f) => splitTags(f.value));
 
-function renderLockList() {
-  const items = [...LOCK.items].sort((a, b) => lockName(a).localeCompare(lockName(b), undefined, { sensitivity: "base" }));
-  if (!items.length) { $("lockList").innerHTML = emptyHtml("lock", "Locker is empty. Tap <b>+ New item</b>."); return; }
-  $("lockList").innerHTML = `<div class="group">${items.map(lockItemHtml).join("")}</div>`;
+function lockFiltered() { // search looks at name and every field EXCEPT secrets
+  const q = LOCK.q.trim().toLowerCase();
+  const all = [...LOCK.items].sort((a, b) => lockName(a).localeCompare(lockName(b), undefined, { sensitivity: "base" }));
+  if (!q) return all;
+  return all.filter((it) => [it.name, ...(it.fields || []).filter((f) => f.type !== "secret").map((f) => f.value)]
+    .some((v) => String(v || "").toLowerCase().includes(q)));
 }
 
-function lockItemHtml(it) {
-  const rows = [], tags = [];
-  (it.fields || []).forEach((f, idx) => {
-    if (!filled(f)) return;
-    const k = `<span class="k">${esc(f.name)}</span>`;
-    const ref = `${it.id}:${idx}`;
-    if (f.type === "tag") return tags.push(...splitTags(f.value));
-    if (f.type === "secret") {
-      const shown = LOCK.reveal.has(ref);
-      rows.push(`<div class="lrow">${k}<span class="v secret">${shown ? esc(f.value) : "••••••••"}</span>
-        <button class="mini" data-reveal="${ref}" aria-label="Show">${icon("eye")}</button>
-        <button class="mini" data-copy="${ref}" aria-label="Copy">${icon("copy")}</button></div>`);
-    } else if (f.type === "url") {
-      rows.push(`<div class="lrow">${k}<a class="v" href="${esc(safeUrl(f.value))}" target="_blank" rel="noopener noreferrer">${esc(f.value)}</a></div>`);
-    } else if (f.type === "note") {
-      rows.push(`<div class="item-body">${esc(f.value)}</div>`);
-    } else {
-      rows.push(`<div class="lrow">${k}<span class="v">${esc(f.value)}</span>
-        <button class="mini" data-copy="${ref}" aria-label="Copy">${icon("copy")}</button></div>`);
-    }
-  });
-  const chips = tags.map((t) => `<span class="chip">${icon("tag")}${esc(t)}</span>`).join("");
-  return `<div class="item note">
+function renderLockList() {
+  document.querySelectorAll("#lockSeg button").forEach((b) => b.classList.toggle("on", b.dataset.lv === LOCK.view));
+  document.body.classList.toggle("wide", LOCK.view !== "list"); // table/board use the full screen width
+  const items = lockFiltered();
+  if (!LOCK.items.length) { $("lockList").innerHTML = emptyHtml("lock", "Locker is empty. Tap <b>+ New item</b>."); return; }
+  if (!items.length) { $("lockList").innerHTML = emptyHtml("search", "Nothing matches your search."); return; }
+  $("lockList").innerHTML = LOCK.view === "table" ? lockTableHtml(items) : LOCK.view === "board" ? lockBoardHtml(items) : lockListHtml(items);
+}
+
+// One value, shown the same way in every view
+function valueHtml(it, f, idx) {
+  const ref = `${it.id}:${idx}`;
+  if (f.type === "secret") {
+    const shown = LOCK.reveal.has(ref);
+    return `<span class="v secret">${shown ? esc(f.value) : "••••••••"}</span>
+      <button class="mini" data-reveal="${ref}" aria-label="Show">${icon("eye")}</button>
+      <button class="mini" data-copy="${ref}" aria-label="Copy">${icon("copy")}</button>`;
+  }
+  if (f.type === "url") return `<a class="v" href="${esc(safeUrl(f.value))}" target="_blank" rel="noopener noreferrer">${esc(f.value)}</a>`;
+  if (f.type === "tag") return splitTags(f.value).map((t) => `<span class="chip">${esc(t)}</span>`).join(" ");
+  if (f.type === "note") return `<span class="v" title="${esc(f.value)}">${esc(f.value)}</span>`;
+  return `<span class="v">${esc(f.value)}</span><button class="mini" data-copy="${ref}" aria-label="Copy">${icon("copy")}</button>`;
+}
+
+function lockRowsHtml(it, skipTypes = []) {
+  return (it.fields || []).map((f, idx) => {
+    if (!filled(f) || skipTypes.includes(f.type)) return "";
+    if (f.type === "note") return `<div class="item-body">${esc(f.value)}</div>`;
+    return `<div class="lrow"><span class="k">${esc(f.name)}</span>${valueHtml(it, f, idx)}</div>`;
+  }).join("");
+}
+
+function lockListHtml(items) {
+  return `<div class="group">${items.map((it) => `<div class="item note">
     <div class="item-main">
       <div class="item-title" data-ledit="${it.id}" style="cursor:pointer">${esc(lockName(it))}</div>
-      ${rows.join("")}
-      <div class="meta">${chips}<span>${relDate(it.updated_at)}</span></div>
+      ${lockRowsHtml(it, ["tag"])}
+      <div class="meta">${itemTags(it).map((t) => `<span class="chip">${icon("tag")}${esc(t)}</span>`).join("")}<span>${relDate(it.updated_at)}</span></div>
     </div>
     <button class="del" data-ledit="${it.id}" aria-label="Edit">${icon("note")}</button>
-  </div>`;
+  </div>`).join("")}</div>`;
+}
+
+function lockTableHtml(items) {
+  const cols = []; // every field name used, in first-seen order
+  items.forEach((it) => (it.fields || []).forEach((f) => { if (!cols.includes(f.name)) cols.push(f.name); }));
+  const head = `<tr><th>Name</th>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr>`;
+  const body = items.map((it) => `<tr>
+    <td><span class="tname" data-ledit="${it.id}">${esc(lockName(it))}</span></td>
+    ${cols.map((c) => {
+      const idx = (it.fields || []).findIndex((f) => f.name === c);
+      const f = it.fields?.[idx];
+      return `<td><div class="cell">${f && filled(f) ? valueHtml(it, f, idx) : ""}</div></td>`;
+    }).join("")}
+  </tr>`).join("");
+  return `<div class="ltable-wrap"><table class="ltable"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
+function lockBoardHtml(items) {
+  const cols = new Map();
+  items.forEach((it) => {
+    const tags = [...new Set(itemTags(it))];
+    (tags.length ? tags : [""]).forEach((t) => { if (!cols.has(t)) cols.set(t, []); cols.get(t).push(it); });
+  });
+  const names = [...cols.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  if (cols.has("")) names.push(""); // "No tag" goes last
+  return `<div class="board">${names.map((t) => `<div class="bcol">
+    <div class="bhead">${t ? esc(t) : "No tag"}<span class="n">${cols.get(t).length}</span></div>
+    ${cols.get(t).map((it) => `<div class="bcard">
+      <div class="item-title" data-ledit="${it.id}" style="cursor:pointer">${esc(lockName(it))}</div>
+      ${lockRowsHtml(it, ["tag", "note"])}
+    </div>`).join("")}
+  </div>`).join("")}</div>`;
 }
 
 function fieldByRef(ref) {
@@ -1365,7 +1449,7 @@ async function onLockListClick(e) {
   if (t.dataset.ledit) openLockEditor(t.dataset.ledit);
 }
 
-// ---- add / edit sheet ----
+// ---- add / edit sheet (fields are fully editable: add, rename, change type, delete) ----
 function openLockEditor(id) {
   const it = id ? LOCK.items.find((x) => x.id === id) : null;
   if (it?.broken) return toast("This item can't be decrypted");
@@ -1373,36 +1457,90 @@ function openLockEditor(id) {
   LOCK.armedDelete = false;
   $("lsTitle").textContent = it ? "Edit item" : "New item";
   $("lsName").value = it?.name || "";
-  const fields = it ? it.fields : DEFAULT_FIELDS.map((f) => ({ ...f, value: "" }));
-  $("lsFields").innerHTML = fields.map(fieldInputHtml).join("");
+  LOCK.draft = (it ? it.fields : DEFAULT_FIELDS).map((f) => ({ name: f.name, type: f.type, value: f.value || "" }));
+  renderDraft();
   $("lsDelete").classList.toggle("hidden", !it);
   $("lsDelete").textContent = "Delete";
   $("lockSheet").classList.remove("hidden");
 }
 
-function fieldInputHtml(f, idx) {
-  const attrs = `class="field" data-fi="${idx}" data-name="${esc(f.name)}" data-type="${f.type}" autocomplete="off"`;
-  const v = esc(f.value || "");
+function renderDraft() {
+  $("lsFields").innerHTML = LOCK.draft.map(draftRowHtml).join("") ||
+    `<div class="sub" style="margin:12px 4px 0">No fields. Tap <b>+ Add field</b>.</div>`;
+}
+
+function draftRowHtml(f, i) {
+  const v = esc(f.value);
+  const a = `class="field" data-fv="${i}" autocomplete="off"`;
   let input;
-  if (f.type === "note") input = `<textarea ${attrs} rows="3" style="min-height:80px">${v}</textarea>`;
-  else if (f.type === "secret") input = `<div class="with-btn"><input ${attrs} type="password" value="${v}" autocomplete="new-password"><button type="button" class="mini" data-peek aria-label="Show">${icon("eye")}</button></div>`;
-  else if (f.type === "tag") input = `<input ${attrs} value="${v}" placeholder="comma, separated">`;
-  else if (f.type === "url") input = `<input ${attrs} type="url" inputmode="url" value="${v}" placeholder="https://">`;
-  else input = `<input ${attrs} value="${v}">`;
-  const typ = FIELD_TYPES[f.type] || "Text";
-  const label = f.name.toLowerCase() === typ.toLowerCase() ? esc(f.name) : `${esc(f.name)} · ${typ}`;
-  return `<label class="lfield"><span>${label}</span>${input}</label>`;
+  if (f.type === "note") input = `<textarea ${a} rows="3" style="min-height:80px">${v}</textarea>`;
+  else if (f.type === "secret") input = `<div class="with-btn"><input ${a} type="password" value="${v}" autocomplete="new-password"><button type="button" class="mini" data-peek aria-label="Show">${icon("eye")}</button></div>`;
+  else if (f.type === "tag") input = `<input ${a} value="${v}" placeholder="Type new tag, or tap one below"><div class="tagpick" data-tp="${i}">${tagPickHtml(f.value)}</div>`;
+  else if (f.type === "url") input = `<input ${a} type="url" inputmode="url" value="${v}" placeholder="https://">`;
+  else input = `<input ${a} value="${v}">`;
+  const types = Object.entries(FIELD_TYPES).map(([k, l]) => `<option value="${k}" ${k === f.type ? "selected" : ""}>${l}</option>`).join("");
+  return `<div class="lfield">
+    <div class="fhead">
+      <input class="fname" data-fn="${i}" value="${esc(f.name)}" placeholder="Field name" autocomplete="off" aria-label="Field name">
+      <select class="ftype" data-ft="${i}" aria-label="Field type">${types}</select>
+      <button type="button" class="mini" data-fdel="${i}" aria-label="Remove field">✕</button>
+    </div>
+    ${input}
+  </div>`;
+}
+
+// Tag picker: every tag already used in the locker, one tap to add / remove
+function allLockTags() {
+  const seen = new Map(); // lowercase → first spelling used
+  LOCK.items.forEach((it) => itemTags(it).forEach((t) => { if (!seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t); }));
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+function tagPickHtml(value) {
+  const cur = splitTags(value).map((t) => t.toLowerCase());
+  return allLockTags().map((t) => `<button type="button" class="tchip ${cur.includes(t.toLowerCase()) ? "on" : ""}" data-tag="${esc(t)}">${esc(t)}</button>`).join("");
+}
+function toggleTag(btn) {
+  const box = btn.closest(".tagpick"), inp = $("lsFields").querySelector(`[data-fv="${box.dataset.tp}"]`);
+  const tag = btn.dataset.tag, tags = splitTags(inp.value);
+  const i = tags.findIndex((t) => t.toLowerCase() === tag.toLowerCase());
+  i >= 0 ? tags.splice(i, 1) : tags.push(tag);
+  inp.value = tags.join(", ");
+  box.innerHTML = tagPickHtml(inp.value);
+}
+
+function syncDraft() { // copy what's typed on screen back into LOCK.draft
+  document.querySelectorAll("#lsFields [data-fn]").forEach((el) => (LOCK.draft[el.dataset.fn].name = el.value));
+  document.querySelectorAll("#lsFields [data-ft]").forEach((el) => (LOCK.draft[el.dataset.ft].type = el.value));
+  document.querySelectorAll("#lsFields [data-fv]").forEach((el) => (LOCK.draft[el.dataset.fv].value = el.value));
+}
+
+function onDraftClick(e) {
+  const tag = e.target.closest("[data-tag]");
+  if (tag) return toggleTag(tag);
+  const peek = e.target.closest("[data-peek]");
+  if (peek) { const inp = peek.previousElementSibling; inp.type = inp.type === "password" ? "text" : "password"; return; }
+  const del = e.target.closest("[data-fdel]");
+  if (del) { syncDraft(); LOCK.draft.splice(Number(del.dataset.fdel), 1); renderDraft(); }
+}
+
+function addDraftField() {
+  syncDraft();
+  LOCK.draft.push({ name: "", type: "text", value: "" });
+  renderDraft();
+  $("lsFields").querySelector(`[data-fn="${LOCK.draft.length - 1}"]`).focus();
 }
 
 function readLockEditor() {
-  const fields = [...$("lsFields").querySelectorAll("[data-fi]")].map((el) => ({
-    name: el.dataset.name, type: el.dataset.type, value: el.value,
-  }));
+  syncDraft();
+  const known = new Map(allLockTags().map((t) => [t.toLowerCase(), t])); // "money" → existing "Money"
+  const fixTags = (v) => [...new Set(splitTags(v).map((t) => known.get(t.toLowerCase()) || t))].join(", ");
+  const fields = LOCK.draft.map((f) => ({ name: f.name.trim() || FIELD_TYPES[f.type] || "Field", type: f.type,
+    value: f.type === "tag" ? fixTags(f.value) : f.value }));
   return { name: $("lsName").value.trim(), fields };
 }
 
 function closeLockEditor() {
-  LOCK.editing = null;
+  LOCK.editing = null; LOCK.draft = [];
   $("lockSheet").classList.add("hidden");
   $("lsFields").innerHTML = ""; // remove typed secrets from the page
 }
