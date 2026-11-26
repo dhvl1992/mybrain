@@ -358,6 +358,12 @@ If you forget it, nobody can open your locker — not even you. Write it on pape
       <div id="lockList" style="margin-top:10px"></div>
       <div class="sub" style="text-align:center;margin-top:18px">Auto-locks after 5 min idle or 1 min away. Copied passwords clear after 30 s.</div>
       <button id="btnLockChange" class="btn btn-secondary" style="width:100%;margin-top:10px">Change locker password</button>
+      <div class="btn-row">
+        <button id="btnLockExport" class="btn btn-secondary"><svg class="i"><use href="#i-download"/></svg>Export (encrypted)</button>
+        <button id="btnLockRestore" class="btn btn-secondary">Restore</button>
+      </div>
+      <input id="lockRestoreFile" type="file" accept=".json,application/json" class="hidden">
+      <div class="sub" style="text-align:center;margin-top:8px">The backup opens only with the locker password you had when you exported it.</div>
     </div>
 
     <div id="lockMsg" class="notice warn hidden"></div>
@@ -1260,6 +1266,9 @@ function wireLocker() {
   $("lsFields").onchange = (e) => { if (e.target.dataset.ft !== undefined) { syncDraft(); renderDraft(); } }; // type changed → new input kind
   $("lsAddField").onclick = addDraftField;
   $("btnLockChange").onclick = openPwSheet;
+  $("btnLockExport").onclick = exportLocker;
+  $("btnLockRestore").onclick = () => $("lockRestoreFile").click();
+  $("lockRestoreFile").onchange = (e) => restoreLocker(e.target);
   $("pwClose").onclick = closePwSheet;
   $("pwSave").onclick = changeLockPassword;
   $("pwSheet").onclick = (e) => { if (e.target === $("pwSheet")) closePwSheet(); };
@@ -1667,6 +1676,66 @@ async function lockKeyStillValid() {
   LOCK.meta = undefined; lockNow(); openLocker();
   toast("Locker password was changed on another device. Unlock with the new one.", 6000);
   return false;
+}
+
+// ---- Step 5: encrypted backup ----
+// The file holds exactly what Supabase holds: salt + check + scrambled items.
+// Without the locker password (the one in use when you exported) it is useless.
+async function exportLocker() {
+  const btn = $("btnLockExport");
+  busy(btn, true);
+  try {
+    const { data: rows, error } = await db.from("locker_items").select("id, iv, data, created_at, updated_at");
+    if (error) throw error;
+    const m = LOCK.meta;
+    const file = { app: "mybrain-locker", version: 1, exported: new Date().toISOString(),
+      meta: { salt: m.salt, iters: m.iters, check_iv: m.check_iv, check_data: m.check_data }, items: rows };
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: "application/json" }));
+    a.download = `mybrain-locker-${iso(new Date())}.json`;
+    a.click();
+    toast(`Exported ${rows.length} items (encrypted)`);
+  } catch (e) { toast("Export failed: " + (e.message || e), 5000); }
+  busy(btn, false);
+}
+
+// Restore: open the file with the password it was exported with, re-lock with today's key,
+// and add only items that are not already in the locker (nothing is overwritten).
+async function restoreLocker(fileInput) {
+  const f = fileInput.files[0];
+  fileInput.value = "";
+  if (!f || !LOCK.key) return;
+  let file;
+  try { file = JSON.parse(await f.text()); if (file.app !== "mybrain-locker") throw 0; }
+  catch { return toast("This is not a MyBrain locker backup", 4000); }
+  const pw = prompt(`Locker password used when this backup was made (${String(file.exported || "").slice(0, 10)}):`);
+  if (!pw) return;
+  toast("Opening backup…", 8000);
+  try {
+    const m = file.meta;
+    const oldKey = await deriveKey(pw, m.salt, m.iters);
+    try { if ((await unseal(oldKey, m.check_iv, m.check_data)) !== LOCK_CHECK) throw 0; }
+    catch { return toast("Wrong password for this backup", 4000); }
+    const have = new Set(LOCK.items.map((x) => x.id));
+    const rows = [];
+    let bad = 0;
+    for (const r of file.items || []) {
+      if (have.has(r.id)) continue;
+      try {
+        const item = await unseal(oldKey, r.iv, r.data);
+        rows.push({ id: r.id, ...(await seal(LOCK.key, { name: item.name, fields: item.fields })) });
+      } catch { bad++; }
+    }
+    if (rows.length) {
+      if (!(await lockKeyStillValid())) return;
+      const { error } = await db.from("locker_items").insert(rows);
+      if (error) throw error;
+      await loadLockItems();
+      renderLocker();
+    }
+    const skipped = (file.items || []).length - rows.length - bad;
+    toast(`Restored ${rows.length} · already here ${skipped}${bad ? ` · unreadable ${bad}` : ""}`, 5000);
+  } catch (e) { toast("Restore failed: " + (e.message || e), 5000); }
 }
 
 async function saveLockItem() {
