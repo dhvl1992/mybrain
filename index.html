@@ -363,7 +363,7 @@ async function boot() {
 function wireEvents() {
   $("btnLogin").onclick = () => auth("login");
   $("btnSignup").onclick = () => auth("signup");
-  $("password").onkeydown = (e) => e.key === "Enter" && auth("login");
+  $("password").onkeydown = (e) => { if (e.key === "Enter") auth("login"); };
   $("btnLogout").onclick = async () => { await db.auth.signOut(); state.user = null; state.items = []; show("login"); };
   $("btnSettings").onclick = () => show(state.view === "settings" ? "capture" : "settings");
   $("btnSaveSettings").onclick = () => { saveSettings(); toast(`Saved · using ${PROVIDERS[state.prov].label}`); };
@@ -387,7 +387,7 @@ function wireEvents() {
   }));
   document.querySelectorAll("#nav button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
   $("btnAddList").onclick = addList;
-  $("newListName").onkeydown = (e) => e.key === "Enter" && addList();
+  $("newListName").onkeydown = (e) => { if (e.key === "Enter") addList(); };
   $("sheetClose").onclick = closeEditor;
   $("eCancel").onclick = closeEditor;
   $("eSave").onclick = saveEditor;
