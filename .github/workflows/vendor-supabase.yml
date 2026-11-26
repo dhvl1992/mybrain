@@ -1,0 +1,43 @@
+# Copies the official Supabase JS library (from npm) into vendor/supabase.js,
+# so the app never loads code from an outside CDN.
+# Runs by itself when this file changes, or by hand: Actions → Vendor Supabase → Run workflow.
+name: Vendor Supabase
+
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/vendor-supabase.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download from npm and copy the browser build
+        run: |
+          set -e
+          npm pack @supabase/supabase-js@2 --silent > /tmp/name.txt
+          TGZ=$(tail -1 /tmp/name.txt)
+          mkdir -p /tmp/pkg && tar -xzf "$TGZ" -C /tmp/pkg
+          VERSION=$(node -p "require('/tmp/pkg/package/package.json').version")
+          FILE=/tmp/pkg/package/dist/umd/supabase.js
+          test -s "$FILE" || { echo "No UMD build found"; ls -R /tmp/pkg/package/dist | head -50; exit 1; }
+          grep -q "createClient" "$FILE" || { echo "File has no createClient"; exit 1; }
+          mkdir -p vendor
+          cp "$FILE" vendor/supabase.js
+          SHA=$(openssl dgst -sha384 -binary vendor/supabase.js | openssl base64 -A)
+          printf "@supabase/supabase-js %s\nsource: npm registry tarball %s\nsha384-%s\n" "$VERSION" "$TGZ" "$SHA" > vendor/SUPABASE_VERSION.txt
+          cat vendor/SUPABASE_VERSION.txt
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
+          git add vendor
+          git diff --cached --quiet && { echo "No change"; exit 0; }
+          git commit -m "Vendor @supabase/supabase-js $(head -1 vendor/SUPABASE_VERSION.txt | cut -d' ' -f2)"
+          git push
