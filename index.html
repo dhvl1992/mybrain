@@ -241,7 +241,10 @@
   .ltable th[data-sort]:hover { color: var(--text); }
   .ltable th .arr { margin-left: 4px; }
   .ltable tbody tr { cursor: pointer; }
-  @media (min-width: 800px) { body.peek .wrap { margin-right: min(620px, 100vw); } } /* list/table/board stay visible beside the page */
+  @media (min-width: 800px) { /* list/table/board and the bottom bar stay visible beside the page */
+    body.peek .wrap { margin-right: min(620px, 100vw); }
+    body.peek #nav { right: min(620px, 100vw); }
+  }
   @media (max-width: 799px) {
     .lpage-card { width: 100vw; border-left: 0; box-shadow: none; padding: calc(12px + env(safe-area-inset-top)) 18px 40px; }
     .only-phone { display: inline; font-size: 26px; line-height: 1; } .only-desk { display: none; }
@@ -575,7 +578,7 @@ async function boot() {
   const { data } = await db.auth.getSession();
   state.user = data.session?.user || null;
   log("session user", state.user?.email);
-  if (state.user) { await loadItems(); show("capture"); } else { show("login"); }
+  if (state.user) { await loadItems(); startRoute(); } else { show("login"); }
 }
 
 // ============ 4. EVENTS ============
@@ -607,7 +610,7 @@ function wireEvents() {
   document.querySelectorAll("#nav button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
   $("btnAddList").onclick = addList;
   $("newListName").onkeydown = (e) => { if (e.key === "Enter") addList(); };
-  $("sheetClose").onclick = () => closeEditor();
+  $("sheetClose").onclick = () => leaveItemPage(() => closeEditor());
   $("eCancel").onclick = cancelItemEdit;
   $("eSave").onclick = saveEditor;
   $("eEditBtn").onclick = () => setItemMode(true);
@@ -617,12 +620,77 @@ function wireEvents() {
   $("eTitle").onkeydown = (e) => { if (e.key === "Enter") e.preventDefault(); };
   document.addEventListener("keydown", (e) => {
     if ($("sheet").classList.contains("hidden")) return;
-    if (e.key === "Escape") state.itemEditMode ? cancelItemEdit() : closeEditor();
+    if (e.key === "Escape") state.itemEditMode ? cancelItemEdit() : leaveItemPage(() => closeEditor());
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && state.itemEditMode) { e.preventDefault(); saveEditor(); }
     if (e.key.toLowerCase() === "e" && !state.itemEditMode && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) setItemMode(true);
   });
   $("eList").onchange = $("eKind").onchange = toggleStoreField;
   wireLocker();
+}
+
+// ============ 5b. BACK BUTTON (browser history) ============
+// Every screen has its own address: #todo, #note, #note/<id>, #locker/<id>, #locker/new.
+// Opening a tab or an item adds a history step, so Back (phone button, Alt+←) goes to the
+// previous MyBrain screen instead of leaving the app.
+const ROUTE_VIEWS = ["capture", "todo", "note", "idea", "settings", "locker"];
+let routing = false; // true while we are following a Back/Forward step (don't add new steps then)
+const routeHash = (view, item) => "#" + view + (item ? "/" + item : "");
+function parseHash() {
+  const [view, item] = decodeURIComponent(location.hash.slice(1)).split("/");
+  return { view: ROUTE_VIEWS.includes(view) ? view : null, item: item || null };
+}
+function pushRoute(view, item = null) {
+  if (routing || !state.user || view === "login") return;
+  if (location.hash === routeHash(view, item)) return;
+  history.pushState({ mb: 1 }, "", routeHash(view, item));
+}
+function replaceRoute(view, item = null) {
+  if (routing || !state.user || view === "login") return;
+  history.replaceState({ mb: 1 }, "", routeHash(view, item));
+}
+// Which item page is open right now (undefined = none)
+function openPageKey() {
+  if (!$("sheet").classList.contains("hidden")) return state.editing;
+  if (!$("lockSheet").classList.contains("hidden")) return LOCK.editing ?? "new";
+  return undefined;
+}
+// ✕ / Esc / after delete: step back in history if this page has its own step, else just close
+function leaveItemPage(closeFn) {
+  if (parseHash().item) history.back(); // the Back handler closes the page (and asks about unsaved changes)
+  else closeFn();
+}
+
+window.addEventListener("popstate", () => {
+  if (!state.user) return;
+  const r = parseHash(), view = r.view || "capture";
+  const open = openPageKey();
+  routing = true;
+  try {
+    if (open !== undefined && open !== r.item) {
+      const closed = !$("sheet").classList.contains("hidden") ? closeEditor() : closeLockEditor();
+      if (closed === false) { // you chose to keep unsaved changes → put the address back
+        routing = false; pushRoute(state.view, open); return;
+      }
+    }
+    if (view !== state.view) show(view);
+    if (r.item && r.item !== openPageKey()) openRouteItem(view, r.item);
+  } finally { routing = false; }
+});
+
+function openRouteItem(view, id) {
+  if (view === "locker") {
+    if (!LOCK.key) return; // locked: the unlock screen shows instead
+    if (id === "new") openLockEditor(null);
+    else if (LOCK.items.some((x) => x.id === id)) openLockEditor(id);
+  } else if (state.items.some((x) => x.id === id && x.kind === view)) openEditor(id);
+}
+
+// First screen after login: use the address if it has one (e.g. a bookmarked #todo)
+function startRoute() {
+  const r = parseHash();
+  routing = true; show(r.view || "capture"); routing = false;
+  replaceRoute(state.view);
+  if (r.item && state.view !== "locker") openRouteItem(state.view, r.item);
 }
 
 // ============ 5. VIEWS ============
@@ -653,6 +721,7 @@ function show(view) {
   if (isList(view)) renderList();
   if (view === "settings") renderListSettings();
   if (view === "locker") openLocker();
+  pushRoute(view);
 }
 
 function updateHeader() {
@@ -702,7 +771,7 @@ async function auth(mode) {
   if (!data.session) return toast("Check your email to confirm, then log in", 5000);
   state.user = data.user;
   await loadItems();
-  show("capture");
+  startRoute();
 }
 
 // ============ 7. DATA (Supabase) ============
@@ -1232,7 +1301,9 @@ function openEditor(id) {
   if (state.editing && state.editing !== id && itemDirty() && !confirm("Discard unsaved changes?")) return;
   const i = state.items.find((x) => x.id === id);
   if (!i) return;
+  const wasOpen = !$("sheet").classList.contains("hidden");
   state.editing = id;
+  (wasOpen ? replaceRoute : pushRoute)(state.view, id);
   fillItemRead(i);
   fillItemEdit(i);
   setItemMode(false);
@@ -1332,7 +1403,7 @@ async function deleteFromPage() {
   if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Tap again to delete"; return; }
   confirmDelete.armed = id; // tell deleteItem the second tap already happened
   await deleteItem(id, b);
-  if (!state.items.find((x) => x.id === id)) closeEditor(true);
+  if (!state.items.find((x) => x.id === id)) { closeEditor(true); if (parseHash().item) history.back(); }
 }
 
 async function saveEditor() {
@@ -1360,7 +1431,7 @@ async function saveEditor() {
   busy($("eSave"), false);
   if (ok) { // back to read mode with the saved values; on error stay in edit mode so nothing typed is lost
     const i = state.items.find((x) => x.id === id);
-    if (i.kind !== state.view) { closeEditor(true); toast(`Saved · moved to ${KIND_NAME[i.kind]}s`); return; }
+    if (i.kind !== state.view) { closeEditor(true); if (parseHash().item) history.back(); toast(`Saved · moved to ${KIND_NAME[i.kind]}s`); return; }
     fillItemRead(i); fillItemEdit(i); setItemMode(false); toast("Saved");
   }
 }
@@ -1460,7 +1531,7 @@ function wireLocker() {
   $("lockPw").onkeydown = (e) => { if (e.key === "Enter") unlockLocker(); };
   $("btnLockNow").onclick = () => { lockNow(); toast("Locked"); };
   $("btnLockAdd").onclick = () => openLockEditor(null);
-  $("lsClose").onclick = () => closeLockEditor();
+  $("lsClose").onclick = () => leaveItemPage(() => closeLockEditor());
   $("lsEditProps").onclick = toggleEditProps;
   $("lsEditBtn").onclick = () => setLockEditMode(true);
   $("lsCancel").onclick = cancelLockEdit;
@@ -1468,7 +1539,7 @@ function wireLocker() {
   $("lsName").oninput = (e) => { autoGrow(e.target); updateDirty(); };
   document.addEventListener("keydown", (e) => {
     if ($("lockSheet").classList.contains("hidden")) return;
-    if (e.key === "Escape") LOCK.editMode && LOCK.editing !== null ? cancelLockEdit() : closeLockEditor();
+    if (e.key === "Escape") LOCK.editMode && LOCK.editing !== null ? cancelLockEdit() : leaveItemPage(() => closeLockEditor());
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (!$("lsSave").disabled) saveLockItem(); }
   });
   $("lsSave").onclick = saveLockItem;
@@ -1576,6 +1647,7 @@ function lockNow(forget = false) {
   if (forget) LOCK.meta = undefined; // logout: next user may be different
   LOCK.editMode = false;
   $("lockSheet").classList.add("hidden"); $("lsFields").innerHTML = ""; document.body.classList.remove("peek");
+  if (parseHash().view === "locker" && parseHash().item) replaceRoute("locker");
   closePwSheet();
   $("lockList").innerHTML = "";
   if (state.view === "locker") renderLocker();
@@ -1718,7 +1790,9 @@ function openLockEditor(id) {
   if (LOCK.editing !== null && id !== LOCK.editing && lockDirty() && !confirm("Discard unsaved changes?")) return;
   const it = id ? LOCK.items.find((x) => x.id === id) : null;
   if (it?.broken) return toast("This item can't be decrypted");
+  const wasOpen = !$("lockSheet").classList.contains("hidden");
   LOCK.editing = id;
+  (wasOpen ? replaceRoute : pushRoute)("locker", id || "new");
   LOCK.armedDelete = false;
   LOCK.editMode = !it;  // existing item: read first, ✎ to edit. New item: straight to edit.
   LOCK.editProps = false;
@@ -2043,6 +2117,7 @@ async function saveLockItem() {
     const saved = { id: data.id, updated_at: data.updated_at, ...item };
     LOCK.items = id ? LOCK.items.map((x) => (x.id === id ? saved : x)) : [saved, ...LOCK.items];
     LOCK.editing = saved.id;
+    replaceRoute("locker", saved.id);
     LOCK.orig = draftSnapshot();
     $("lsMeta").textContent = "Last edited · Just now";
     LOCK.editMode = false; LOCK.editProps = false;
@@ -2062,6 +2137,7 @@ async function deleteLockItem() {
   if (error) return toast("Could not delete: " + error.message, 4000);
   LOCK.items = LOCK.items.filter((x) => x.id !== id);
   closeLockEditor(true);
+  if (parseHash().item) history.back();
   renderLocker();
   toast("Deleted");
 }
