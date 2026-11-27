@@ -3,32 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>MyBrain</title>
+<title>MyBrain · dhvl1992</title>
 <meta name="description" content="Personal tasks and notes">
-<meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)">
-<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#fafafa">
+<meta name="color-scheme" content="only light">
+<link rel="manifest" href="/manifest.json"> <!-- one installable app (dhvl1992) for everything -->
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
-  /* ---------- Design tokens ---------- */
+  /* ---------- Design tokens — same values as /theme.css (DESIGN.md). Always light, like every dhvl1992 app. ---------- */
   :root {
-    --bg: #f7f7f5; --surface: #ffffff; --surface-2: #f1f1ee;
-    --text: #1c1c1a; --muted: #6f6f6a; --faint: #a3a39d;
-    --border: #e7e7e2; --accent: #1f7a5a; --accent-soft: #e6f2ec;
-    --danger: #c43d3d; --danger-soft: #fbeaea; --warn: #b7791f;
-    --radius: 12px; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 1px 1px rgba(0,0,0,.02);
-    color-scheme: light;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #121212; --surface: #1c1c1c; --surface-2: #262626;
-      --text: #ececea; --muted: #9a9a95; --faint: #6b6b66;
-      --border: #2c2c2c; --accent: #4cc496; --accent-soft: #1b2e26;
-      --danger: #ef6b6b; --danger-soft: #3a1f1f; --warn: #e0a84a;
-      --shadow: none; color-scheme: dark;
-    }
+    --bg: #fafafa; --surface: #ffffff; --surface-2: #efefef;
+    --text: #111111; --muted: #757575; --faint: #a6a6a6;
+    --border: #ececec; --accent: #3366ee; --accent-soft: #e8eefd;
+    --danger: #c2562a; --danger-soft: #fbefe8; --warn: #c2562a;
+    --radius: 16px; --shadow: 0 1px 2px rgba(0,0,0,.03), 0 6px 20px rgba(0,0,0,.04);
+    color-scheme: only light;
   }
 
   /* ---------- Base ---------- */
@@ -265,7 +256,7 @@
   textarea.pbody { min-height: 220px; border-radius: 0; border-top: 1px solid var(--border); padding: 16px 8px; overflow: hidden; }
   select.pinput { appearance: auto; cursor: pointer; }
   select.pinput option { background: var(--surface); color: var(--text); }
-  input[type="date"].pinput { color-scheme: light dark; }
+  input[type="date"].pinput { color-scheme: light; }
   #rTitle { word-wrap: break-word; }
   .item { align-items: center; }
   .item-main { cursor: pointer; }
@@ -276,6 +267,40 @@
   .tagpick:empty { display: none; }
   .tchip { height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; color: var(--muted); cursor: pointer; }
   .tchip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  /* ---------- dhvl1992 shared look (DESIGN.md): system font, regular headings, pills, soft fills, no hard borders ---------- */
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 16px; }
+  header { padding-top: 20px; }
+  h1 { font-size: 22px; font-weight: 500; letter-spacing: -.01em; }
+  .btn { border-radius: 999px; font-weight: 500; border: 0; height: 48px; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary, .btn-danger { background: var(--surface-2); border: 0; }
+  .icon-btn { border: 0; background: var(--surface-2); border-radius: 50%; width: 40px; height: 40px; }
+  .field { background: var(--surface-2); border: 0; }
+  .field:focus { box-shadow: 0 0 0 2px var(--accent); }
+  .seg { border-radius: 999px; padding: 4px; }
+  .seg button { border-radius: 999px; height: 36px; font-weight: 500; }
+  .group, .ltable-wrap { border: 0; border-radius: 24px; box-shadow: var(--shadow); }
+  .bcard { border: 0; border-radius: 16px; }
+  .chip { border-radius: 999px; }
+  .chip.kind, .lists button, select.chip-select, .mini, .ftype { border-color: transparent; }
+  .lists button { background: var(--surface-2); font-weight: 500; }
+  .lists button.on { background: var(--text); color: #fff; }
+  .mini { background: var(--surface-2); border-radius: 999px; }
+  .notice { border-radius: 16px; }
+  nav.tabs button { font-weight: 500; }
+  nav.tabs button.on { color: var(--accent); }
+  #toast { border-radius: 999px; }
+  .sheet-card { border-radius: 24px 24px 0 0; }
+  .sheet-head, .bhead { font-weight: 500; }
+  .label { font-weight: 500; }
+
+  /* ---------- Shared top bar (/topbar.js) ---------- */
+  /* Side page starts right under the bar; --topbar-y is 0 when the bar slid away on a phone */
+  .lpage { top: var(--topbar-y, 0px); transition: top .25s ease; }
+  .lpage-card { border-left: 0; }
+  .ptitle { font-weight: 500; letter-spacing: -.015em; }
+  .tname, .item-title { font-weight: 500; }
 </style>
 </head>
 <body>
@@ -2144,5 +2169,7 @@ async function deleteLockItem() {
 
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 </script>
+<!-- Shared top bar (logo → home, account menu): /topbar.js in the hub repo -->
+<script src="/topbar.js"></script>
 </body>
 </html>

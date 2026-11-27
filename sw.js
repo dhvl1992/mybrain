@@ -1,11 +1,13 @@
 // Service worker: makes the app installable and opens it even with weak network.
 // Strategy: network first (so you always get the latest version), cache as backup.
 // Only same-origin files are cached. Supabase and Gemini calls are never cached.
-const CACHE = "mybrain-v19";
-const SHELL = ["./", "./index.html", "./manifest.json", "./icons/icon-192.png", "./icons/icon-512.png", "./vendor/supabase.js"];
+const CACHE = "mybrain-v20";
+const SHELL = ["./", "./index.html", "./icons/icon-192.png", "./icons/icon-512.png", "./vendor/supabase.js"];
+// Shared hub files (top bar, app list, install file). Network first like everything here, so hub changes arrive at once.
+const SHARED = ["/topbar.js", "/apps.js", "/manifest.json"];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL).then(() => c.addAll(SHARED).catch(() => {}))));
   self.skipWaiting();
 });
 
