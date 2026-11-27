@@ -270,7 +270,9 @@
 
   /* ---------- dhvl1992 shared look (DESIGN.md): system font, regular headings, pills, soft fills, no hard borders ---------- */
   body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 16px; }
-  header { padding-top: 20px; }
+  header { padding-top: 24px; }
+  .wrap { padding: 0 24px; }                                  /* same 24px side margin as every app */
+  .lists { margin: 0 -24px; padding-left: 24px; padding-right: 24px; }
   h1 { font-size: 22px; font-weight: 500; letter-spacing: -.01em; }
   .btn { border-radius: 999px; font-weight: 500; border: 0; height: 48px; }
   .btn-primary { background: var(--accent); color: #fff; }
